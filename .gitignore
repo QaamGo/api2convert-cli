@@ -1,0 +1,6 @@
+/dist/
+/api2convert
+/api2convert.exe
+*.out
+*.test
+.DS_Store
