@@ -1,0 +1,88 @@
+version: 2
+project_name: api2convert
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: api2convert
+    main: .
+    binary: api2convert
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .ShortCommit }}
+      - -X main.date={{ .CommitDate }}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+homebrew_casks:
+  - name: api2convert
+    repository:
+      owner: QaamGo
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    homepage: "https://www.api2convert.com"
+    description: "Convert, compress and transform files from the command line"
+    # The binaries are unsigned for now, so strip the quarantine attribute on
+    # install to avoid Gatekeeper blocking them.
+    hooks:
+      post:
+        install: |
+          system "xattr", "-dr", "com.apple.quarantine", "#{staged_path}/api2convert"
+
+scoops:
+  - repository:
+      owner: QaamGo
+      name: scoop-bucket
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    homepage: "https://www.api2convert.com"
+    description: "Convert, compress and transform files from the command line"
+    license: MIT
+
+nfpms:
+  - id: packages
+    package_name: api2convert
+    vendor: QaamGo
+    homepage: "https://www.api2convert.com"
+    maintainer: "QaamGo <support@qaamgo.com>"
+    description: "Convert, compress and transform files from the command line"
+    license: MIT
+    formats: [deb, rpm, apk]
+    bindir: /usr/bin
+
+release:
+  github:
+    owner: QaamGo
+    name: api2convert-cli
+  prerelease: auto
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

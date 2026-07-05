@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # GoReleaser creates the GitHub Release and uploads assets
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      # Org convention: the tag must equal the committed version constant.
+      - name: Assert tag matches version.go
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          ver="$(grep -oE 'version = "[0-9]+\.[0-9]+\.[0-9]+"' version.go | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+          echo "tag=$tag version.go=$ver"
+          [ "$tag" = "$ver" ] || { echo "::error::tag $tag != version.go $ver"; exit 1; }
+
+      # A local 'replace' must never ship in a release build.
+      - name: Assert no replace directive in go.mod
+        run: |
+          if grep -qE '^\s*replace ' go.mod; then
+            echo "::error::go.mod contains a replace directive; remove it before releasing"; exit 1
+          fi
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PAT with contents:write on QaamGo/homebrew-tap and QaamGo/scoop-bucket.
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
