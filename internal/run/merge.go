@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	api2convert "github.com/QaamGo/api2convert-go"
+	api2convert "github.com/QaamGo/api2convert-go/v10"
 
 	"github.com/QaamGo/api2convert-cli/internal/ui"
 )
