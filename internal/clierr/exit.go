@@ -11,7 +11,7 @@ import (
 	"io"
 	"strings"
 
-	api2convert "github.com/QaamGo/api2convert-go"
+	api2convert "github.com/QaamGo/api2convert-go/v10"
 )
 
 // ExitCode is a stable, documented process exit status.
