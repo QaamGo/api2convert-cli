@@ -3,7 +3,7 @@ package cli
 import (
 	"context"
 
-	api2convert "github.com/QaamGo/api2convert-go"
+	api2convert "github.com/QaamGo/api2convert-go/v10"
 
 	"github.com/QaamGo/api2convert-cli/internal/client"
 	"github.com/QaamGo/api2convert-cli/internal/config"
