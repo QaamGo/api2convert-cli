@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	api2convert "github.com/QaamGo/api2convert-go"
+	api2convert "github.com/QaamGo/api2convert-go/v10"
 	"github.com/spf13/cobra"
 
 	"github.com/QaamGo/api2convert-cli/internal/ui"

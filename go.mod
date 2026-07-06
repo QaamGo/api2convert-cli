@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/QaamGo/api2convert-go v0.0.0-00010101000000-000000000000
+	github.com/QaamGo/api2convert-go/v10 v10.2.0
 	github.com/charmbracelet/huh v1.0.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/minio/selfupdate v0.6.0
@@ -47,4 +47,4 @@ require (
 
 // Local development: build against the sibling SDK checkout. CI asserts this
 // `replace` is absent on tagged releases (see .github/workflows/release.yml).
-replace github.com/QaamGo/api2convert-go => ../api2convert-go
+replace github.com/QaamGo/api2convert-go/v10 => ../api2convert-go

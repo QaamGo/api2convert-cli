@@ -1,7 +1,7 @@
 # AGENTS.md — api2convert-cli
 
 Official command-line tool for the api2convert API. Go, single self-contained
-binary, wraps the `github.com/QaamGo/api2convert-go` SDK.
+binary, wraps the `github.com/QaamGo/api2convert-go/v10` SDK.
 
 ## Layout
 
@@ -23,7 +23,7 @@ The toolchain is **Go 1.25+** (a current dependency requires it). Locally the
 SDK is a sibling checkout, wired via a `replace` in `go.mod`:
 
 ```
-replace github.com/QaamGo/api2convert-go => ../api2convert-go
+replace github.com/QaamGo/api2convert-go/v10 => ../api2convert-go
 ```
 
 With Go installed:

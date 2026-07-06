@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	api2convert "github.com/QaamGo/api2convert-go"
+	api2convert "github.com/QaamGo/api2convert-go/v10"
 )
 
 // Conversion is one supported conversion in the catalog.
