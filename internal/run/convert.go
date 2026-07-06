@@ -184,7 +184,7 @@ func resolveAPIPath(res *api2convert.ConversionResult, out, target string) (stri
 	if err != nil {
 		return "", err
 	}
-	name := safeBase(o.Filename)
+	name := SafeBase(o.Filename)
 	if name == "" {
 		name = "output." + target
 	}
@@ -260,13 +260,15 @@ func stripExt(name string) string {
 	return strings.TrimSuffix(name, filepath.Ext(name))
 }
 
-// safeBase reduces an API-supplied filename to a bare basename safe to join to a
-// directory (mirrors the SDK's own sanitization).
-func safeBase(name string) string {
+// SafeBase reduces an API-supplied filename to a bare basename safe to join to a
+// directory (mirrors the SDK's own sanitization). It returns "" when the input
+// resolves to nothing usable ("", ".", ".."), so callers can substitute a
+// fallback name.
+func SafeBase(name string) string {
 	name = strings.ReplaceAll(name, "\x00", "")
 	name = strings.ReplaceAll(name, `\`, "/")
 	b := strings.TrimSpace(path.Base(name))
-	if b == "" || b == "." || b == ".." {
+	if b == "" || b == "." || b == ".." || b == "/" {
 		return ""
 	}
 	return b
