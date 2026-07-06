@@ -2,26 +2,46 @@ name: CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [main, master]
   pull_request:
 
 permissions:
   contents: read
 
+# The CLI builds against the sibling Go SDK via a local `replace ../api2convert-go`
+# in go.mod, so every job checks out both repos side by side under the workspace and
+# runs the Go tooling from the api2convert-cli directory. api2convert-go is public,
+# so no credential is needed.
+
 jobs:
   lint:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api2convert-cli
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: api2convert-cli
+      - uses: actions/checkout@v4
+        with:
+          repository: QaamGo/api2convert-go
+          ref: main
+          path: api2convert-go
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
           cache: true
+          cache-dependency-path: api2convert-cli/go.sum
       - name: gofmt
         run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
       - uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          # Build golangci-lint from source with the Go toolchain above (1.25) so it
+          # can analyse go1.25 code — prebuilt binaries lag the toolchain version.
+          version: v1.64.8
+          install-mode: goinstall
+          working-directory: api2convert-cli
 
   test:
     strategy:
@@ -29,12 +49,23 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: api2convert-cli
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: api2convert-cli
+      - uses: actions/checkout@v4
+        with:
+          repository: QaamGo/api2convert-go
+          ref: main
+          path: api2convert-go
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
           cache: true
+          cache-dependency-path: api2convert-cli/go.sum
       - run: go build ./...
       - run: go test ./...
 
@@ -43,29 +74,48 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          path: api2convert-cli
           fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          repository: QaamGo/api2convert-go
+          ref: main
+          path: api2convert-go
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
           cache: true
+          cache-dependency-path: api2convert-cli/go.sum
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
           args: release --snapshot --clean --skip=publish
+          workdir: api2convert-cli
 
   live:
-    # Live tests hit the real API and consume quota; run only on master or manual
-    # dispatch, and only when the key secret is present.
-    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/master' }}
+    # Live tests hit the real API and consume quota; run only on the default branch
+    # or manual dispatch, and only when the key secret is present.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api2convert-cli
     env:
       API2CONVERT_API_KEY: ${{ secrets.API2CONVERT_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: api2convert-cli
+      - uses: actions/checkout@v4
+        with:
+          repository: QaamGo/api2convert-go
+          ref: main
+          path: api2convert-go
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
           cache: true
+          cache-dependency-path: api2convert-cli/go.sum
       - name: Live conformance (skips without a key)
         if: ${{ env.API2CONVERT_API_KEY != '' }}
         run: go test ./... -tags=live
