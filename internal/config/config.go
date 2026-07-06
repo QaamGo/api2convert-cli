@@ -72,13 +72,23 @@ func Resolve(file Config, fl Flags, getenv func(string) string) (Resolved, error
 	switch {
 	case fl.MaxRetries >= 0:
 		r.MaxRetries = fl.MaxRetries
+	case fl.MaxRetries != -1:
+		// -1 is the "unset" sentinel; any other negative is user error and is
+		// rejected rather than silently ignored (consistent with --timeout).
+		return Resolved{}, fmt.Errorf("--max-retries must not be negative, got %d", fl.MaxRetries)
 	case getenv("API2CONVERT_MAX_RETRIES") != "":
 		n, e := strconv.Atoi(getenv("API2CONVERT_MAX_RETRIES"))
 		if e != nil {
 			return Resolved{}, fmt.Errorf("API2CONVERT_MAX_RETRIES must be an integer")
 		}
+		if n < 0 {
+			return Resolved{}, fmt.Errorf("API2CONVERT_MAX_RETRIES must not be negative, got %d", n)
+		}
 		r.MaxRetries = n
 	case file.MaxRetries != nil:
+		if *file.MaxRetries < 0 {
+			return Resolved{}, fmt.Errorf("max_retries must not be negative, got %d", *file.MaxRetries)
+		}
 		r.MaxRetries = *file.MaxRetries
 	}
 
@@ -109,6 +119,9 @@ func pickDur(name string, vals ...string) (time.Duration, error) {
 		d, err := time.ParseDuration(v)
 		if err != nil {
 			return 0, fmt.Errorf("%s: invalid duration %q (use e.g. 30s, 5m)", name, v)
+		}
+		if d < 0 {
+			return 0, fmt.Errorf("%s: duration must not be negative, got %q", name, v)
 		}
 		return d, nil
 	}

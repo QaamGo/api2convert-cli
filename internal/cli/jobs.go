@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/QaamGo/api2convert-cli/internal/output"
+	"github.com/QaamGo/api2convert-cli/internal/run"
 	"github.com/QaamGo/api2convert-cli/internal/ui"
 )
 
@@ -173,11 +174,14 @@ func passwordArgs(p string) []string {
 }
 
 // uniqueDownloadPath returns a collision-free path for one output, so a job with
-// several outputs sharing a filename doesn't overwrite itself.
+// several outputs sharing a filename doesn't overwrite itself. Both the filename
+// and the id fallback are reduced to a bare, sanitized basename so a hostile
+// server-supplied value (e.g. an id of "../../etc/cron.d/evil") can never escape
+// the download directory.
 func uniqueDownloadPath(dir, filename, id string, seen map[string]bool) string {
-	base := filepath.Base(strings.ReplaceAll(filename, `\`, "/"))
-	if base == "" || base == "." || base == ".." {
-		base = id
+	base := run.SafeBase(filename)
+	if base == "" {
+		base = run.SafeBase(id)
 	}
 	if base == "" {
 		base = "output"

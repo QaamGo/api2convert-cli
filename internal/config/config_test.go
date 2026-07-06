@@ -55,6 +55,46 @@ func TestResolveDefaultsAndDurations(t *testing.T) {
 	}
 }
 
+func TestResolveRejectsNonsensicalNumbers(t *testing.T) {
+	none := func(string) string { return "" }
+
+	// Negative durations are rejected instead of being silently dropped to the
+	// SDK default by the downstream `if r.Timeout > 0` guard.
+	if _, err := Resolve(Config{Timeout: "-5s"}, Flags{MaxRetries: -1}, none); err == nil {
+		t.Error("negative --timeout should return an error")
+	}
+	if _, err := Resolve(Config{PollTimeout: "-1m"}, Flags{MaxRetries: -1}, none); err == nil {
+		t.Error("negative poll timeout should return an error")
+	}
+
+	// A negative --max-retries flag value other than the -1 "unset" sentinel is
+	// rejected rather than silently falling through (mirrors --timeout).
+	if _, err := Resolve(Config{}, Flags{MaxRetries: -5}, none); err == nil {
+		t.Error("negative --max-retries flag should return an error")
+	}
+	// The -1 sentinel means "unset" and must still resolve cleanly.
+	if r := mustResolve(t, Config{}, Flags{MaxRetries: -1}, none); r.MaxRetries != -1 {
+		t.Errorf("--max-retries -1 sentinel should stay unset, got %d", r.MaxRetries)
+	}
+
+	// Negative max_retries from the config file is rejected.
+	neg := -3
+	if _, err := Resolve(Config{MaxRetries: &neg}, Flags{MaxRetries: -1}, none); err == nil {
+		t.Error("negative max_retries from file should return an error")
+	}
+
+	// Negative max_retries from the environment is rejected.
+	env := func(k string) string {
+		if k == "API2CONVERT_MAX_RETRIES" {
+			return "-2"
+		}
+		return ""
+	}
+	if _, err := Resolve(Config{}, Flags{MaxRetries: -1}, env); err == nil {
+		t.Error("negative API2CONVERT_MAX_RETRIES should return an error")
+	}
+}
+
 func TestResolveMaxRetriesZeroFromFile(t *testing.T) {
 	none := func(string) string { return "" }
 	zero := 0

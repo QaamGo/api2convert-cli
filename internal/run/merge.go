@@ -93,7 +93,7 @@ func mergeOutPath(out, target, apiName string) string {
 	if out != "" {
 		dir = out
 	}
-	name := safeBase(apiName)
+	name := SafeBase(apiName)
 	if name == "" {
 		name = "merged." + target
 	}
