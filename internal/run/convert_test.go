@@ -82,10 +82,13 @@ func TestSafeBase(t *testing.T) {
 		`a\b\c.pdf`:        "c.pdf",
 		"":                 "",
 		"..":               "",
+		"/":                "", // a bare separator must not resolve to "/"
+		"//":               "", // path.Base("//") == "/" — also fall back
+		`\`:                "", // backslash normalizes to "/" then falls back
 	}
 	for in, want := range cases {
-		if got := safeBase(in); got != want {
-			t.Errorf("safeBase(%q)=%q want %q", in, got, want)
+		if got := SafeBase(in); got != want {
+			t.Errorf("SafeBase(%q)=%q want %q", in, got, want)
 		}
 	}
 }
