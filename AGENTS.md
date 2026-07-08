@@ -41,8 +41,23 @@ docker run --rm -v <workspace>:/work -w /work/api2convert-cli \
   sh -c 'go build ./... && go test ./...'
 ```
 
-Tests are offline/hermetic: they inject a fake `api2convert.HttpSender` (see
-`internal/run/e2e_test.go`) — no API key needed.
+Tests come in two tiers, mirroring the sibling SDKs:
+
+- **Hermetic (default).** `go test ./...` injects a fake `api2convert.HttpSender`
+  (see `internal/run/e2e_test.go`) — offline, no API key needed.
+- **Live conformance.** `live/conformance_test.go` (build tag `live`) builds the
+  real binary and drives it end-to-end against the live API — one test per
+  documented example guide, plus negatives that pin the stable exit-code
+  contract. It consumes quota and is gated twice: the `live` build tag keeps it
+  out of the default run, and each test skips unless `API2CONVERT_API_KEY` is
+  set. `API2CONVERT_BASE_URL` optionally targets a non-prod environment.
+
+  ```sh
+  API2CONVERT_API_KEY=<key> go test -tags live -timeout 600s ./live/...
+  ```
+
+  CI runs it on the default branch / manual dispatch (`.github/workflows/ci.yml`,
+  `live` job). Never commit a real key — it is read only from the environment.
 
 ## Releasing
 
