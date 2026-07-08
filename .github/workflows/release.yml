@@ -3,13 +3,32 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Manual dry-run: builds + Authenticode-signs every target but publishes
+  # nothing (goreleaser --snapshot). Lets us validate signing without cutting a
+  # real release or touching the Homebrew/Scoop taps.
+  workflow_dispatch:
+    inputs:
+      snapshot:
+        description: "Dry run: build + sign, do NOT publish"
+        type: boolean
+        default: true
 
 permissions:
   contents: write # GoReleaser creates the GitHub Release and uploads assets
 
 jobs:
   goreleaser:
-    runs-on: ubuntu-latest
+    # WINDOWS runner is REQUIRED: Authenticode signing (Azure Trusted Signing)
+    # only runs on Windows. Go still cross-compiles every OS/arch here
+    # (CGO_ENABLED=0), so the Linux, macOS and Windows artifacts are all produced
+    # from this single job; the Windows exe is signed in place by the GoReleaser
+    # build hook (see .goreleaser.yaml) before archiving.
+    runs-on: windows-latest
+    defaults:
+      run:
+        # The assert steps below are written in bash; Git Bash ships on the
+        # windows-latest image, so force bash instead of the default PowerShell.
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,7 +40,9 @@ jobs:
           cache: true
 
       # Org convention: the tag must equal the committed version constant.
+      # Only meaningful for real tag releases; skipped on the manual dry-run.
       - name: Assert tag matches version.go
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
           tag="${GITHUB_REF_NAME#v}"
           ver="$(grep -oE 'version = "[0-9]+\.[0-9]+\.[0-9]+"' version.go | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
@@ -35,11 +56,31 @@ jobs:
             echo "::error::go.mod contains a replace directive; remove it before releasing"; exit 1
           fi
 
+      # Azure Trusted Signing CLI, invoked by the windows build hook in
+      # .goreleaser.yaml to Authenticode-sign api2convert.exe in place.
+      # (.NET SDK is preinstalled on windows-latest.) PowerShell handles the
+      # Windows tools path cleanly; the tool is on PATH for later steps.
+      - name: Install Azure Trusted Signing CLI (dotnet 'sign')
+        shell: pwsh
+        run: |
+          dotnet tool install --global --prerelease sign
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
-          args: release --clean
+          # Real tag push -> full release. Manual dry-run -> --snapshot (no publish).
+          args: release --clean ${{ (github.event_name == 'workflow_dispatch' && inputs.snapshot) && '--snapshot' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # PAT with contents:write on QaamGo/homebrew-tap and QaamGo/scoop-bucket.
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          # --- Azure Trusted Signing (consumed by the windows build hook) ---
+          # The 3 AZURE_* vars authenticate the service principal
+          # (qaamgo-trusted-signing) via DefaultAzureCredential.
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          TRUSTED_SIGNING_ENDPOINT: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          TRUSTED_SIGNING_ACCOUNT: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          TRUSTED_SIGNING_CERT_PROFILE: ${{ secrets.TRUSTED_SIGNING_CERT_PROFILE }}
