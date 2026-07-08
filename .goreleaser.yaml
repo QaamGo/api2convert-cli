@@ -6,16 +6,9 @@ before:
     - go mod download
 
 builds:
-  # Unix binaries (Linux + macOS). Not code-signed yet.
-  # TODO(macOS signing): once the Apple Developer ID Application cert + App Store
-  # Connect notary key exist, add a darwin post hook here that signs+notarizes the
-  # Mach-O binary from any OS (see SIGNING.md "macOS Option A", quill), e.g.:
-  #   hooks:
-  #     post:
-  #       - cmd: quill sign-and-notarize {{ .Path }}
-  #         env: [ QUILL_SIGN_P12=..., QUILL_NOTARY_KEY=..., ... ]
-  #         output: true
-  # ...and then delete the homebrew_casks quarantine-strip postflight below.
+  # Unix binaries (Linux + macOS). The macOS (darwin) binaries are Developer ID
+  # signed + notarized by the `notarize.macos` block below (before archiving);
+  # Linux has no OS-level code-signing.
   - id: unix
     main: .
     binary: api2convert
@@ -39,8 +32,6 @@ builds:
   # AZURE_TENANT_ID/AZURE_CLIENT_ID/AZURE_CLIENT_SECRET env vars
   # (DefaultAzureCredential); endpoint/account/profile come from the
   # TRUSTED_SIGNING_* env vars — all set on the GoReleaser step in release.yml.
-  # NOTE: a full/snapshot build of the windows target needs those env vars set;
-  # for local dev use `goreleaser build --single-target` (host OS only).
   - id: windows
     main: .
     binary: api2convert
@@ -60,6 +51,32 @@ builds:
       post:
         - cmd: sign code artifact-signing --verbosity information --timestamp-url http://timestamp.acs.microsoft.com --artifact-signing-endpoint {{ .Env.TRUSTED_SIGNING_ENDPOINT }} --artifact-signing-account {{ .Env.TRUSTED_SIGNING_ACCOUNT }} --artifact-signing-certificate-profile {{ .Env.TRUSTED_SIGNING_CERT_PROFILE }} {{ .Path }}
           output: true
+
+# macOS Developer ID sign + notarize the darwin binaries (from the 'unix' build),
+# BEFORE archiving, so every tar.gz / Homebrew cask / package carries the
+# signed+notarized binary. Cross-platform: GoReleaser bundles `quill` as a Go
+# library, so this runs on the same windows-latest runner — no Mac, no extra
+# tooling. The `.p12` and `.p8` are passed as base64 strings (no temp files).
+# Guarded by isEnvSet so it is a NO-OP until the MACOS_* secrets exist (safe for
+# fork PRs and current builds).
+# CAVEATS: (1) notarization is SKIPPED under `goreleaser --snapshot`; validate
+# via a real (pre)release tag. (2) A bare CLI can't be stapled, so Gatekeeper
+# verifies notarization online on first *GUI* launch; Homebrew/Scoop/curl/tar
+# installs set no quarantine flag, so they never prompt.
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12_BASE64" }}'
+      ids:
+        - unix
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12_BASE64 }}"
+        password: "{{ .Env.MACOS_SIGN_P12_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY_BASE64 }}"
+        wait: true
+        timeout: 20m
 
 archives:
   - id: default
@@ -84,10 +101,10 @@ homebrew_casks:
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     homepage: "https://www.api2convert.com"
     description: "Convert, compress and transform files from the command line"
-    # The macOS binaries are unsigned for now, so strip the quarantine attribute
-    # on install to avoid Gatekeeper blocking them.
-    # TODO: delete this hook once macOS signing+notarization is live (see the
-    # macOS TODO in builds above).
+    # Strip the quarantine attribute on install. Harmless once the darwin binary
+    # is notarized (an extra no-op); kept during the transition so any release
+    # cut before the MACOS_* secrets are added isn't Gatekeeper-blocked. Safe to
+    # delete once macOS notarization is confirmed live.
     hooks:
       post:
         install: |
