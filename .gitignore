@@ -4,3 +4,9 @@
 *.out
 *.test
 .DS_Store
+
+# Local-only Go workspace: build against the sibling ../api2convert-go checkout
+# during co-development. Never committed — releases use the published module
+# (see go.mod require) so the release build is reproducible.
+/go.work
+/go.work.sum

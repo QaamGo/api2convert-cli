@@ -44,7 +44,3 @@ require (
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 )
-
-// Local development: build against the sibling SDK checkout. CI asserts this
-// `replace` is absent on tagged releases (see .github/workflows/release.yml).
-replace github.com/QaamGo/api2convert-go/v10 => ../api2convert-go
