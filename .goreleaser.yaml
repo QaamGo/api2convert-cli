@@ -6,7 +6,17 @@ before:
     - go mod download
 
 builds:
-  - id: api2convert
+  # Unix binaries (Linux + macOS). Not code-signed yet.
+  # TODO(macOS signing): once the Apple Developer ID Application cert + App Store
+  # Connect notary key exist, add a darwin post hook here that signs+notarizes the
+  # Mach-O binary from any OS (see SIGNING.md "macOS Option A", quill), e.g.:
+  #   hooks:
+  #     post:
+  #       - cmd: quill sign-and-notarize {{ .Path }}
+  #         env: [ QUILL_SIGN_P12=..., QUILL_NOTARY_KEY=..., ... ]
+  #         output: true
+  # ...and then delete the homebrew_casks quarantine-strip postflight below.
+  - id: unix
     main: .
     binary: api2convert
     env:
@@ -18,9 +28,38 @@ builds:
       - -X main.version={{ .Version }}
       - -X main.commit={{ .ShortCommit }}
       - -X main.date={{ .CommitDate }}
-    goos: [linux, darwin, windows]
+    goos: [linux, darwin]
     goarch: [amd64, arm64]
     mod_timestamp: "{{ .CommitTimestamp }}"
+
+  # Windows binaries — Authenticode-signed IN PLACE via Azure Trusted Signing,
+  # after build and BEFORE archiving, so the .zip contains the signed exe.
+  # Requires a WINDOWS runner (Authenticode signing is Windows-only) with the
+  # 'sign' dotnet tool on PATH (installed in release.yml). Auth is via the
+  # AZURE_TENANT_ID/AZURE_CLIENT_ID/AZURE_CLIENT_SECRET env vars
+  # (DefaultAzureCredential); endpoint/account/profile come from the
+  # TRUSTED_SIGNING_* env vars — all set on the GoReleaser step in release.yml.
+  # NOTE: a full/snapshot build of the windows target needs those env vars set;
+  # for local dev use `goreleaser build --single-target` (host OS only).
+  - id: windows
+    main: .
+    binary: api2convert
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .ShortCommit }}
+      - -X main.date={{ .CommitDate }}
+    goos: [windows]
+    goarch: [amd64, arm64]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    hooks:
+      post:
+        - cmd: sign code artifact-signing --verbosity information --timestamp-url http://timestamp.acs.microsoft.com --artifact-signing-endpoint {{ .Env.TRUSTED_SIGNING_ENDPOINT }} --artifact-signing-account {{ .Env.TRUSTED_SIGNING_ACCOUNT }} --artifact-signing-certificate-profile {{ .Env.TRUSTED_SIGNING_CERT_PROFILE }} {{ .Path }}
+          output: true
 
 archives:
   - id: default
@@ -45,8 +84,10 @@ homebrew_casks:
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     homepage: "https://www.api2convert.com"
     description: "Convert, compress and transform files from the command line"
-    # The binaries are unsigned for now, so strip the quarantine attribute on
-    # install to avoid Gatekeeper blocking them.
+    # The macOS binaries are unsigned for now, so strip the quarantine attribute
+    # on install to avoid Gatekeeper blocking them.
+    # TODO: delete this hook once macOS signing+notarization is live (see the
+    # macOS TODO in builds above).
     hooks:
       post:
         install: |
