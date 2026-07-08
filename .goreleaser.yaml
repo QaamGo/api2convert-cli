@@ -101,14 +101,8 @@ homebrew_casks:
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     homepage: "https://www.api2convert.com"
     description: "Convert, compress and transform files from the command line"
-    # Strip the quarantine attribute on install. Harmless once the darwin binary
-    # is notarized (an extra no-op); kept during the transition so any release
-    # cut before the MACOS_* secrets are added isn't Gatekeeper-blocked. Safe to
-    # delete once macOS notarization is confirmed live.
-    hooks:
-      post:
-        install: |
-          system "xattr", "-dr", "com.apple.quarantine", "#{staged_path}/api2convert"
+    # (macOS binaries are Developer ID-signed + notarized by the notarize.macos
+    # block above, so no quarantine-strip hook is needed.)
 
 scoops:
   - repository:
