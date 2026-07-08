@@ -1,10 +1,33 @@
 # Code signing (macOS & Windows)
 
-**Status: not yet wired.** The current release pipeline ships **unsigned** binaries
-(Homebrew/Scoop/the install script sidestep most OS warnings; direct browser
-downloads still hit Gatekeeper/SmartScreen). This document is the playbook for
-turning on signing once the certificates are provisioned — you have an **Apple
-Developer** account and a **Windows signing key**, which are exactly what's needed.
+**Status: LIVE (wired + validated 2026-07-08), effective from the next tagged release.**
+The release pipeline signs on every `v*` tag, all from the single `windows-latest`
+GoReleaser job (Go cross-compiles every OS; the signers are cross-platform):
+
+- **Windows** (amd64/arm64): Authenticode via **Azure Trusted Signing**. A GoReleaser
+  windows-build post-hook runs the `sign` dotnet tool (`sign code artifact-signing …`)
+  on `api2convert.exe` before archiving. Auth: the `AZURE_*` service-principal env vars
+  (DefaultAzureCredential) + `TRUSTED_SIGNING_*` config. OV cert → SmartScreen
+  reputation builds over time.
+- **macOS** (amd64/arm64): **Developer ID** sign + **Apple notarization** via GoReleaser's
+  OSS `notarize.macos` block (bundled `quill`), before archiving. Certificate + notary
+  key are passed as base64 (`MACOS_SIGN_P12_BASE64`/`MACOS_SIGN_P12_PASSWORD` +
+  `MACOS_NOTARY_KEY_BASE64`/`MACOS_NOTARY_KEY_ID`/`MACOS_NOTARY_ISSUER_ID`). A bare CLI
+  can't be stapled → Gatekeeper checks notarization online on first GUI launch only;
+  Homebrew/Scoop/curl/tar installs set no quarantine flag, so no prompt (the cask's
+  quarantine-strip hook was therefore removed).
+- **Linux/BSD**: unsigned (no OS gatekeeper).
+
+Validated end-to-end via the manual `workflow_dispatch` snapshot dry-run (builds + signs
++ notarizes, publishes nothing). The rest of this document is the reference playbook +
+gotchas.
+
+> **Gotchas that bit us:** (1) the Windows `sign` tool is **Windows-only** (hence the
+> windows-latest runner). (2) The macOS `.p12` must be built with openssl **`-legacy`**
+> (Go's PKCS#12 reader can't open OpenSSL-3 default encryption) and must contain the
+> **full chain leaf + Developer ID G2 intermediate + classic `Apple Root CA`** (NOT
+> `Apple Root CA - G3` — wrong root ⇒ "x509: certificate signed by unknown authority").
+> (3) `notarize` *does* run under `--snapshot` (so the dry-run is the validation path).
 
 ## Why enable it
 
@@ -188,9 +211,11 @@ PATH:
 
 ## Cleanups to make once signing is live
 
-1. **Homebrew cask:** delete the `postflight … xattr -dr com.apple.quarantine`
-   hook in `.goreleaser.yaml` — a notarized binary no longer needs it.
-2. **README:** remove the "unidentified developer / SmartScreen bypass" FAQ.
+1. ~~**Homebrew cask:** delete the `postflight … xattr -dr com.apple.quarantine`
+   hook in `.goreleaser.yaml`~~ — **DONE** (removed; notarized binary no longer needs it).
+2. **README:** remove the "unidentified developer / SmartScreen bypass" FAQ —
+   **pending the first signed release** (the currently downloadable v1.0.0 is still
+   unsigned, so the note stays accurate until then).
 3. **winget:** add a GoReleaser `winget:` publisher (now that the exe is signed) to
    open a PR to `microsoft/winget-pkgs`.
 4. Optionally ship a signed/notarized `.dmg`/`.pkg` (mac) and a signed `.msi` (win)
