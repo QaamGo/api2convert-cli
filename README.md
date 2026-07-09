@@ -43,6 +43,17 @@ sudo dpkg -i api2convert_<version>_linux_amd64.deb   # Debian/Ubuntu
 sudo rpm -i  api2convert-<version>.x86_64.rpm         # Fedora/RHEL
 ```
 
+> **First-run OS prompts:** release binaries are code-signed — Windows via Azure
+> Trusted Signing (Authenticode), macOS Developer ID-signed + notarized. Windows
+> SmartScreen may still show *"Windows protected your PC"* on first run: the
+> publisher (**QaamGo Web GmbH**) is shown, so the signature is valid — this is
+> SmartScreen's *reputation* prompt for a new app, not a signing failure, and it
+> clears as downloads accrue. Click **More info → Run anyway**. On macOS, a bare
+> CLI can't carry a stapled notarization ticket, so if Gatekeeper still blocks a
+> browser-downloaded binary, run `xattr -d com.apple.quarantine ./api2convert`.
+> Homebrew, Scoop and the install scripts avoid both prompts (tool-downloaded
+> files carry no quarantine / mark-of-the-web).
+
 ## Quick start
 
 ```sh
