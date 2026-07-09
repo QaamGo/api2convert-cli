@@ -102,6 +102,9 @@ checksum:
 
 homebrew_casks:
   - name: api2convert
+    # Only publish the cask on stable tags — a prerelease (e.g. v1.0.0-rc.1) must
+    # not overwrite the stable formula that `brew install` serves.
+    skip_upload: "auto"
     repository:
       owner: QaamGo
       name: homebrew-tap
@@ -112,7 +115,9 @@ homebrew_casks:
     # block above, so no quarantine-strip hook is needed.)
 
 scoops:
-  - repository:
+  # Same as the cask: skip the scoop manifest on prereleases.
+  - skip_upload: "auto"
+    repository:
       owner: QaamGo
       name: scoop-bucket
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"

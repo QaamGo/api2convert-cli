@@ -39,15 +39,18 @@ jobs:
           go-version: "1.25"
           cache: true
 
-      # Org convention: the tag must equal the committed version constant.
-      # Only meaningful for real tag releases; skipped on the manual dry-run.
+      # Org convention: the tag's base version must equal the committed version
+      # constant. A prerelease suffix (-rc.1, -beta, …) is allowed, so RC tags
+      # like v1.0.0-rc.1 validate against version.go = 1.0.0. Only meaningful for
+      # real tag releases; skipped on the manual dry-run.
       - name: Assert tag matches version.go
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           tag="${GITHUB_REF_NAME#v}"
+          base="${tag%%-*}"
           ver="$(grep -oE 'version = "[0-9]+\.[0-9]+\.[0-9]+"' version.go | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
-          echo "tag=$tag version.go=$ver"
-          [ "$tag" = "$ver" ] || { echo "::error::tag $tag != version.go $ver"; exit 1; }
+          echo "tag=$tag base=$base version.go=$ver"
+          [ "$base" = "$ver" ] || { echo "::error::tag base $base != version.go $ver"; exit 1; }
 
       # A local 'replace' must never ship in a release build.
       - name: Assert no replace directive in go.mod
