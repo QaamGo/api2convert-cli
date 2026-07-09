@@ -143,10 +143,8 @@ release:
   prerelease: auto
 
 changelog:
-  use: github
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
+  # Use GitHub's native release-notes generator: entries read "<subject> by
+  # @<user>" — @usernames only, NEVER author name+email. The `use: github`
+  # (and `use: git`) formats embed the commit author's email, which leaked a
+  # personal address into the v1.0.0-rc.1 notes. Keep release notes email-free.
+  use: github-native
