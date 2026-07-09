@@ -17,7 +17,33 @@ permissions:
   contents: write # GoReleaser creates the GitHub Release and uploads assets
 
 jobs:
+  # Gate the whole release on the test suite (unit + live conformance). If any
+  # test fails — or the live suite can't run because the API2CONVERT_API_KEY
+  # secret is missing — goreleaser never runs (needs: test), so a broken or
+  # untested commit can never be published. Runs on tag pushes and the manual
+  # dry-run alike.
+  test:
+    runs-on: ubuntu-latest
+    env:
+      API2CONVERT_API_KEY: ${{ secrets.API2CONVERT_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: true
+      - run: go build ./...
+      - run: go test ./...
+      - name: Live conformance (required — no silent skip)
+        run: |
+          if [ -z "$API2CONVERT_API_KEY" ]; then
+            echo "::error::API2CONVERT_API_KEY secret is not set — the live conformance suite cannot run"
+            exit 1
+          fi
+          go test -tags=live -timeout 600s ./live/...
+
   goreleaser:
+    needs: test
     # WINDOWS runner is REQUIRED: Authenticode signing (Azure Trusted Signing)
     # only runs on Windows. Go still cross-compiles every OS/arch here
     # (CGO_ENABLED=0), so the Linux, macOS and Windows artifacts are all produced
