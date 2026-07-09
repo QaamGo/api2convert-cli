@@ -43,12 +43,6 @@ sudo dpkg -i api2convert_<version>_linux_amd64.deb   # Debian/Ubuntu
 sudo rpm -i  api2convert-<version>.x86_64.rpm         # Fedora/RHEL
 ```
 
-> **Unsigned builds (for now):** on macOS a browser-downloaded binary may show
-> "cannot be opened because the developer cannot be verified" — right-click →
-> **Open**, or run `xattr -d com.apple.quarantine ./api2convert`. On Windows,
-> SmartScreen may warn — **More info → Run anyway**. Homebrew, Scoop and the
-> install scripts avoid this.
-
 ## Quick start
 
 ```sh
