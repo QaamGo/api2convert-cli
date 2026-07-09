@@ -20,27 +20,29 @@ jobs:
       run:
         working-directory: api2convert-cli
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           path: api2convert-cli
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           repository: QaamGo/api2convert-go
           ref: main
           path: api2convert-go
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.25"
           cache: true
           cache-dependency-path: api2convert-cli/go.sum
       - name: gofmt
         run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v9
         with:
-          # Build golangci-lint from source with the Go toolchain above (1.25) so it
-          # can analyse go1.25 code — prebuilt binaries lag the toolchain version.
-          version: v1.64.8
-          install-mode: goinstall
+          # action v9 requires golangci-lint v2. The prebuilt v2.12.2 binary is built
+          # with a current Go toolchain, so the default (binary) install mode analyses
+          # go1.25 code fine — the old goinstall workaround is no longer needed.
+          # v2 config lives in .golangci.yml; timeout moved to a CLI flag in v2.
+          version: v2.12.2
+          args: --timeout=5m
           working-directory: api2convert-cli
 
   test:
@@ -53,15 +55,15 @@ jobs:
       run:
         working-directory: api2convert-cli
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           path: api2convert-cli
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           repository: QaamGo/api2convert-go
           ref: main
           path: api2convert-go
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.25"
           cache: true
@@ -72,21 +74,21 @@ jobs:
   release-dryrun:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           path: api2convert-cli
           fetch-depth: 0
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           repository: QaamGo/api2convert-go
           ref: main
           path: api2convert-go
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.25"
           cache: true
           cache-dependency-path: api2convert-cli/go.sum
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
           args: release --snapshot --clean --skip=publish
@@ -103,15 +105,15 @@ jobs:
     env:
       API2CONVERT_API_KEY: ${{ secrets.API2CONVERT_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           path: api2convert-cli
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           repository: QaamGo/api2convert-go
           ref: main
           path: api2convert-go
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.25"
           cache: true
