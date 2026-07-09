@@ -48,8 +48,15 @@ builds:
     goarch: [amd64, arm64]
     mod_timestamp: "{{ .CommitTimestamp }}"
     hooks:
+      # Guarded by isEnvSet so it is a NO-OP (renders to `true`) whenever the
+      # TRUSTED_SIGNING_* env vars are absent — e.g. the ubuntu `release-dryrun`
+      # CI job, which builds with --snapshot and has no signing secrets and no
+      # `sign` tool installed. Mirrors the notarize.macos guard below. Go
+      # templates never evaluate the untaken branch, so .Env.TRUSTED_SIGNING_*
+      # is only touched when it is actually set (the real release.yml run).
       post:
-        - cmd: sign code artifact-signing --verbosity information --timestamp-url http://timestamp.acs.microsoft.com --artifact-signing-endpoint {{ .Env.TRUSTED_SIGNING_ENDPOINT }} --artifact-signing-account {{ .Env.TRUSTED_SIGNING_ACCOUNT }} --artifact-signing-certificate-profile {{ .Env.TRUSTED_SIGNING_CERT_PROFILE }} {{ .Path }}
+        - cmd: >-
+            {{ if isEnvSet "TRUSTED_SIGNING_ENDPOINT" }}sign code artifact-signing --verbosity information --timestamp-url http://timestamp.acs.microsoft.com --artifact-signing-endpoint {{ .Env.TRUSTED_SIGNING_ENDPOINT }} --artifact-signing-account {{ .Env.TRUSTED_SIGNING_ACCOUNT }} --artifact-signing-certificate-profile {{ .Env.TRUSTED_SIGNING_CERT_PROFILE }} {{ .Path }}{{ else }}true{{ end }}
           output: true
 
 # macOS Developer ID sign + notarize the darwin binaries (from the 'unix' build),
