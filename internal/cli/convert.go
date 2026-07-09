@@ -49,7 +49,7 @@ func newConvertCmd() *cobra.Command {
 			"The target comes from --to, or is inferred from the --out file extension.",
 		Example: "  api2convert convert report.docx --to pdf\n" +
 			"  api2convert convert report.docx -o report.pdf\n" +
-			"  api2convert convert https://example.com/deck.pptx --to pdf -o out/\n" +
+			"  api2convert convert https://example-files.online-convert.com/raster%20image/jpg/example_small.jpg --to pdf -o out/\n" +
 			"  api2convert convert *.png --to webp --option quality=80 --out-dir compressed/",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

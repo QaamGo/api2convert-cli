@@ -11,48 +11,45 @@ Node, Python or Java runtime to install.
 
 ## Install
 
-### macOS / Linux (Homebrew)
+### Windows
 
-```sh
-brew install qaamgo/tap/api2convert
-```
+**Download and run — no installer, no runtime.**
 
-### Windows (Scoop)
+1. Grab **`api2convert_<version>_windows_amd64.zip`** from the
+   [Releases](https://github.com/QaamGo/api2convert-cli/releases) page
+   (use the `arm64` zip on ARM PCs).
+2. Unzip it and run **`api2convert.exe`** — double-click for the guided wizard,
+   or call it from PowerShell / CMD.
 
-```powershell
-scoop bucket add qaamgo https://github.com/QaamGo/scoop-bucket
-scoop install api2convert
-```
-
-### Any OS (install script)
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/QaamGo/api2convert-cli/main/install.sh | sh
-```
+Prefer a one-liner that also adds `api2convert` to your `PATH`? Run in PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/QaamGo/api2convert-cli/main/install.ps1 | iex
 ```
 
-### Linux packages
+<sub>Also on [Scoop](https://scoop.sh): `scoop bucket add qaamgo https://github.com/QaamGo/scoop-bucket && scoop install api2convert`</sub>
 
-Download the `.deb` / `.rpm` from the [Releases](https://github.com/QaamGo/api2convert-cli/releases) page:
+### macOS (Homebrew)
+
+```sh
+brew install qaamgo/tap/api2convert
+```
+
+### Linux
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/QaamGo/api2convert-cli/main/install.sh | sh
+```
+
+Prefer native packages? Download the `.deb` / `.rpm` from the
+[Releases](https://github.com/QaamGo/api2convert-cli/releases) page:
 
 ```sh
 sudo dpkg -i api2convert_<version>_linux_amd64.deb   # Debian/Ubuntu
 sudo rpm -i  api2convert-<version>.x86_64.rpm         # Fedora/RHEL
 ```
 
-> **First-run OS prompts:** release binaries are code-signed — Windows via Azure
-> Trusted Signing (Authenticode), macOS Developer ID-signed + notarized. Windows
-> SmartScreen may still show *"Windows protected your PC"* on first run: the
-> publisher (**QaamGo Web GmbH**) is shown, so the signature is valid — this is
-> SmartScreen's *reputation* prompt for a new app, not a signing failure, and it
-> clears as downloads accrue. Click **More info → Run anyway**. On macOS, a bare
-> CLI can't carry a stapled notarization ticket, so if Gatekeeper still blocks a
-> browser-downloaded binary, run `xattr -d com.apple.quarantine ./api2convert`.
-> Homebrew, Scoop and the install scripts avoid both prompts (tool-downloaded
-> files carry no quarantine / mark-of-the-web).
+<sub>Homebrew works on Linux too: `brew install qaamgo/tap/api2convert`</sub>
 
 ## Quick start
 
@@ -67,7 +64,7 @@ Run `api2convert` with no arguments in a terminal to launch the interactive wiza
 
 ```sh
 # Convert from a URL or stdin
-api2convert convert https://example.com/deck.pptx --to pdf -o out/
+api2convert convert https://example-files.online-convert.com/raster%20image/jpg/example_small.jpg --to pdf -o out/
 cat scan.tiff | api2convert convert - --to pdf -o scan.pdf
 
 # Bulk + recursive, with per-format options
