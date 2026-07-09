@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  workflow_dispatch: # allow running the suite (incl. the live job) on demand
 
 permissions:
   contents: read
@@ -95,8 +96,9 @@ jobs:
           workdir: api2convert-cli
 
   live:
-    # Live tests hit the real API and consume quota; run only on the default branch
-    # or manual dispatch, and only when the key secret is present.
+    # Live tests hit the real API and consume quota; run on the default branch and
+    # on manual dispatch (not on PRs). REQUIRED: the step below fails the build if
+    # the API2CONVERT_API_KEY secret is missing, so the suite can never silently skip.
     if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     defaults:
@@ -118,6 +120,10 @@ jobs:
           go-version: "1.25"
           cache: true
           cache-dependency-path: api2convert-cli/go.sum
-      - name: Live conformance (skips without a key)
-        if: ${{ env.API2CONVERT_API_KEY != '' }}
-        run: go test -tags=live -timeout 600s ./live/...
+      - name: Live conformance (required — no silent skip)
+        run: |
+          if [ -z "$API2CONVERT_API_KEY" ]; then
+            echo "::error::API2CONVERT_API_KEY secret is not set — the live conformance suite cannot run"
+            exit 1
+          fi
+          go test -tags=live -timeout 600s ./live/...
