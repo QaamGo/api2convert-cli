@@ -3,12 +3,12 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 
 	"github.com/QaamGo/api2convert-cli/internal/clierr"
 	"github.com/QaamGo/api2convert-cli/internal/config"
@@ -19,17 +19,21 @@ func newLoginCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "login",
 		Short: "Save and validate your API key",
-		Long:  "Prompts for your api2convert API key (input hidden), validates it against the API, and saves it to the config file.",
+		Long:  "Prompts for your api2convert API key (masked as you type), validates it against the API, and saves it to the config file.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			key := gf.apiKey
 			if key == "" {
-				fmt.Fprint(cmd.ErrOrStderr(), "Enter your api2convert API key: ")
-				raw, err := term.ReadPassword(int(os.Stdin.Fd()))
-				fmt.Fprintln(cmd.ErrOrStderr())
+				raw, err := ui.ReadSecret("Enter your api2convert API key: ", os.Stdin, cmd.ErrOrStderr())
 				if err != nil {
+					if errors.Is(err, ui.ErrInterrupted) {
+						return &clierr.Coded{Code: clierr.ExitInterrupted}
+					}
+					if errors.Is(err, io.EOF) {
+						return &clierr.UsageError{Err: errors.New("no API key provided")}
+					}
 					return &clierr.UsageError{Err: errors.New("could not read API key")}
 				}
-				key = strings.TrimSpace(string(raw))
+				key = strings.TrimSpace(raw)
 			}
 			if key == "" {
 				return &clierr.UsageError{Err: errors.New("no API key provided")}
