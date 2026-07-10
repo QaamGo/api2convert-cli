@@ -111,8 +111,11 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Invoke-WebRequest -Uri 'https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-win64.zip' -OutFile minisign.zip
           Expand-Archive -Force minisign.zip minisign-dist
-          $exe = Get-ChildItem -Recurse -Filter minisign.exe minisign-dist | Select-Object -First 1
-          if (-not $exe) { throw 'minisign.exe not found in the release archive' }
+          # The win64 zip ships both x86_64 and aarch64 builds; pick x86_64 for
+          # the amd64 runner (a stray aarch64 exe fails with a compatibility error).
+          $exe = Get-ChildItem -Recurse -Filter minisign.exe minisign-dist |
+                 Where-Object { $_.FullName -match 'x86_64' } | Select-Object -First 1
+          if (-not $exe) { throw 'x86_64 minisign.exe not found in the release archive' }
           Add-Content -Path $env:GITHUB_PATH -Value $exe.Directory.FullName
 
       # Materialize the signing key from the secret for the `signs` block. If
