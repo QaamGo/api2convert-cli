@@ -5,8 +5,8 @@ github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk
 github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/MakeNowJust/heredoc v1.0.0 h1:cXCdzVdstXyiTqTvfqk9SDHpKNjxuom+DOlyEeQ4pzQ=
 github.com/MakeNowJust/heredoc v1.0.0/go.mod h1:mG5amYoWBHf8vpLOuehzbGGw0EHxpZZ6lCpQ4fNJ8LE=
-github.com/QaamGo/api2convert-go/v10 v10.2.0 h1:yZnoiOQM02tvVvV7p4/Z6zCNLACquwkZOjz6Fux6AVs=
-github.com/QaamGo/api2convert-go/v10 v10.2.0/go.mod h1:wBJwD/F9qvV2sHBYodYgT2Up3DGYSJw9w0al6k5J6PA=
+github.com/QaamGo/api2convert-go/v10 v10.2.1 h1:ipkX4yrZ0a04VpuLJq48jl+81HzE2zpRPdfmqEOWVOE=
+github.com/QaamGo/api2convert-go/v10 v10.2.1/go.mod h1:wBJwD/F9qvV2sHBYodYgT2Up3DGYSJw9w0al6k5J6PA=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
 github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
