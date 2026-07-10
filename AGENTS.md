@@ -19,26 +19,34 @@ binary, wraps the `github.com/QaamGo/api2convert-go/v10` SDK.
 
 ## Build & test
 
-The toolchain is **Go 1.25+** (a current dependency requires it). Locally the
-SDK is a sibling checkout, wired via a `replace` in `go.mod`:
-
-```
-replace github.com/QaamGo/api2convert-go/v10 => ../api2convert-go
-```
-
-With Go installed:
+The toolchain is **Go 1.25+** (a current dependency requires it). `go.mod` pins
+the **published** SDK (`github.com/QaamGo/api2convert-go/v10`), so a plain build
+just works:
 
 ```sh
 go build ./... && go test ./... && go vet ./...
 ```
 
-Without a local Go toolchain, build in Docker with the workspace mounted so the
-`replace` resolves:
+For co-development against a local SDK checkout, use a **gitignored `go.work`**
+(never a `replace` in `go.mod` — that must never ship in a release):
+
+```
+// go.work  (gitignored)
+go 1.25.0
+use (
+	.
+	../api2convert-go
+)
+```
+
+Without a local Go toolchain, build in Docker (set `GOWORK=off` so a stray
+`go.work` can't drag in the sibling; `--network host` lets the module proxy
+resolve the published SDK):
 
 ```sh
-docker run --rm -v <workspace>:/work -w /work/api2convert-cli \
-  -e GOFLAGS=-buildvcs=false golang:1.25-bookworm \
-  sh -c 'go build ./... && go test ./...'
+docker run --rm --network host -v "$PWD":/work -w /work \
+  -e GOWORK=off -e GOFLAGS=-buildvcs=false golang:1.25 \
+  sh -c 'go build ./... && go vet ./... && go test ./...'
 ```
 
 Tests come in two tiers, mirroring the sibling SDKs:
@@ -64,9 +72,8 @@ Tests come in two tiers, mirroring the sibling SDKs:
 - Version lives in `version.go` (`var version`). Bump it, tag `vX.Y.Z`.
 - CI (`.github/workflows/release.yml`) asserts the tag equals `version.go` **and
   that no `replace` directive is present**, then runs GoReleaser.
-- **Prerequisite:** for CI/release the SDK module must be resolvable (published /
-  tagged, or vendored / a `go.work`), because the `replace` is stripped. Local
-  development keeps the `replace`.
+- **Prerequisite:** the SDK module must be published/tagged so `go.mod` resolves
+  it. The local co-dev `go.work` is gitignored and never reaches CI/release.
 - Cross-repo publishing to `QaamGo/homebrew-tap` and `QaamGo/scoop-bucket` needs
   a `TAP_GITHUB_TOKEN` secret (contents:write on those repos).
 - Builds are currently **unsigned**. To enable macOS notarization (Apple Developer

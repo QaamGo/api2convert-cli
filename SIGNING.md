@@ -227,3 +227,64 @@ PATH:
   (should report "accepted / Notarized Developer ID").
 - Windows: right-click → Properties → *Digital Signatures*, or
   `signtool verify /pa /v api2convert.exe` (or `osslsigncode verify api2convert.exe`).
+
+---
+
+## Release-archive signing (minisign) — authenticity for `self-update`
+
+**Status: NOT YET LIVE — code path present, dormant until a keypair is provisioned.**
+
+OS code-signing (above) covers the *installed binary*. It does **not** cover the
+`self-update` path, which today verifies only the SHA-256 in `checksums.txt`.
+Because `checksums.txt` is fetched from the *same* GitHub release as the archive,
+that proves the download wasn't corrupted — not that the release is authentic. A
+detached [minisign](https://jedisct1.github.io/minisign/) signature over
+`checksums.txt` closes that gap: `self-update` already verifies it against an
+embedded public key (`internal/selfupdate/update.go`, `minisignPublicKey`) and
+**refuses to update** on a missing/invalid signature — but only once the key is set.
+
+To turn it on (all maintainer steps — the private key is a secret, never committed):
+
+1. **Generate a password-less keypair** (password-less so CI can sign
+   non-interactively):
+
+   ```sh
+   minisign -G -W -p api2convert.pub -s api2convert.key
+   ```
+
+2. **Store the private key** as the `MINISIGN_PRIVATE_KEY` GitHub Actions secret
+   (paste the full contents of `api2convert.key`). Keep `api2convert.pub`.
+
+3. **Embed the public key** — copy the base64 key line (the 2nd line of
+   `api2convert.pub`) into `minisignPublicKey` in `internal/selfupdate/update.go`.
+
+4. **Sign `checksums.txt` at release time** — add to `.goreleaser.yaml`:
+
+   ```yaml
+   signs:
+     - id: checksums
+       artifacts: checksum                 # signs checksums.txt
+       signature: "${artifact}.minisig"
+       cmd: sh
+       args:
+         - "-c"
+         - 'printf "%s\n" "$MINISIGN_PRIVATE_KEY" > "$TMPDIR/msk" && minisign -S -s "$TMPDIR/msk" -m "$1" -x "$2" </dev/null; rc=$?; rm -f "$TMPDIR/msk"; exit $rc'
+         - "_"
+         - "${artifact}"
+         - "${signature}"
+   ```
+
+   and export `MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}` on the
+   GoReleaser step in `release.yml`, plus install minisign on the runner
+   (`choco install minisign` on windows-latest, or `apt-get install -y minisign`
+   on a Linux runner). `TMPDIR` must be set on the runner.
+
+5. **Validate on a dry-run first.** The `signs` block runs during
+   `goreleaser release --snapshot`; confirm the manual dry-run produces
+   `checksums.txt.minisig` before cutting a real tag. (Do **not** add the `signs`
+   block before the secret exists — GoReleaser fails if the signature isn't
+   produced.)
+
+6. Optionally verify in `install.sh` too: `minisign -Vm checksums.txt -P <pubkey>`.
+
+Verify locally: `minisign -Vm checksums.txt -x checksums.txt.minisig -P "$(tail -1 api2convert.pub)"`.

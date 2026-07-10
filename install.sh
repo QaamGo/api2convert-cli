@@ -51,8 +51,12 @@ if command -v sha256sum >/dev/null 2>&1; then
   ( cd "$tmp" && grep " $asset\$" checksums.txt | sha256sum -c - >/dev/null ) || die "checksum verification failed"
 elif command -v shasum >/dev/null 2>&1; then
   ( cd "$tmp" && grep " $asset\$" checksums.txt | shasum -a 256 -c - >/dev/null ) || die "checksum verification failed"
+elif [ "${API2CONVERT_INSECURE_SKIP_VERIFY:-}" = "1" ]; then
+  # Fail closed by default. Skipping verification requires an explicit opt-out
+  # so a missing sha256 tool can never silently install an unverified binary.
+  info "! no sha256 tool found; skipping verification (API2CONVERT_INSECURE_SKIP_VERIFY=1)"
 else
-  info "! no sha256 tool found; skipping verification"
+  die "no sha256 tool found (install coreutils or perl/shasum); or set API2CONVERT_INSECURE_SKIP_VERIFY=1 to bypass at your own risk"
 fi
 
 tar -xzf "$tmp/$asset" -C "$tmp"

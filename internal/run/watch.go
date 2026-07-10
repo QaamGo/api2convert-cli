@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -14,13 +15,14 @@ import (
 
 // WatchConfig configures the folder watcher.
 type WatchConfig struct {
-	Dir       string
-	Target    string
-	OutDir    string
-	Recursive bool
-	Include   []string // glob patterns on basename; empty = all
-	Exclude   []string
-	Options   Options
+	Dir         string
+	Target      string
+	OutDir      string
+	Recursive   bool
+	Include     []string // glob patterns on basename; empty = all
+	Exclude     []string
+	Concurrency int // max simultaneous conversions (0 = NumCPU)
+	Options     Options
 }
 
 // WatchHandler is called for each conversion outcome (or watcher error).
@@ -44,16 +46,58 @@ func Watch(ctx context.Context, c *api2convert.Client, cfg WatchConfig, onResult
 		return err
 	}
 
+	conc := cfg.Concurrency
+	if conc <= 0 {
+		conc = runtime.NumCPU()
+	}
+	sem := make(chan struct{}, conc)
+
+	// Track outputs the watcher itself wrote, so we never reconvert them — this
+	// is what stops an --on-conflict rename loop from converting a.webp →
+	// a (1).webp → a (1) (1).webp … forever, burning quota. (The OutDir guard in
+	// match() only helps when outputs land in a separate directory.)
+	var wmu sync.Mutex
+	written := map[string]struct{}{}
+	markWritten := func(p string) {
+		if abs, err := filepath.Abs(p); err == nil {
+			wmu.Lock()
+			written[abs] = struct{}{}
+			wmu.Unlock()
+		}
+	}
+	wasWritten := func(p string) bool {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			return false
+		}
+		wmu.Lock()
+		_, ok := written[abs]
+		wmu.Unlock()
+		return ok
+	}
+
 	// Debounce writes per path so a file that is still being copied is only
 	// converted once it has been quiet for stabilizeDelay.
 	var mu sync.Mutex
 	timers := map[string]*time.Timer{}
 
 	fire := func(path string) {
-		if !cfg.match(path) {
+		if wasWritten(path) || !cfg.match(path) {
 			return
 		}
+		// Bound simultaneous conversions the same way batch does, so dropping N
+		// files never starts N parallel jobs.
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			return
+		}
+		defer func() { <-sem }()
+
 		res, cerr := ConvertOne(ctx, c, path, cfg.Target, ensureDirArg(cfg.OutDir), cfg.Options, silentProgress())
+		if cerr == nil && !res.Skipped && res.Path != "" {
+			markWritten(res.Path)
+		}
 		onResult(res, cerr)
 	}
 

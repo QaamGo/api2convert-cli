@@ -78,3 +78,35 @@ func TestConvertURLEndToEnd(t *testing.T) {
 		t.Fatalf("content = %q, want %q", got, payload)
 	}
 }
+
+// TestConvertOneCleansPlaceholderOnSaveFailure locks in the F-04 fix: when the
+// download (res.Save) fails, the empty O_EXCL claim placeholder must be removed,
+// not stranded — otherwise a later run treats it as "already done" (skip) or as a
+// conflict (error).
+func TestConvertOneCleansPlaceholderOnSaveFailure(t *testing.T) {
+	fake := &fakeSender{handle: func(req *api2convert.Request) (*api2convert.Response, error) {
+		switch {
+		case req.Method == http.MethodPost && strings.HasSuffix(req.URL, "/jobs"):
+			return jsonResp(200, `{"id":"j1","status":{"code":"queued"}}`), nil
+		case req.Method == http.MethodGet && strings.Contains(req.URL, "/jobs/j1"):
+			return jsonResp(200, `{"id":"j1","status":{"code":"completed"},"output":[{"uri":"https://dl.example/out.png","filename":"out.png"}]}`), nil
+		case strings.Contains(req.URL, "dl.example"):
+			return jsonResp(500, `{"message":"download boom"}`), nil // the download fails
+		}
+		return jsonResp(404, `{"message":"unexpected"}`), nil
+	}}
+
+	c, err := api2convert.New("k", api2convert.WithHTTPSender(fake))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	// A non-overwrite policy claims the path up front (creates the placeholder).
+	_, cerr := ConvertOne(context.Background(), c, "https://example.com/a.jpg", "png", dir+string(os.PathSeparator), Options{OnConflict: "error"}, ui.NewProgress(nil, false))
+	if cerr == nil {
+		t.Fatal("expected the failed download to surface an error")
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "out.png")); !os.IsNotExist(statErr) {
+		t.Fatalf("claim placeholder was not cleaned up after Save failure (stat err = %v)", statErr)
+	}
+}

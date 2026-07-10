@@ -68,6 +68,9 @@ func ConvertOne(ctx context.Context, c *api2convert.Client, input, target, out s
 			return Result{}, cerr
 		}
 		if _, err := res.Save(ctx, final); err != nil {
+			if o.OnConflict != "overwrite" {
+				_ = os.Remove(final) // don't strand an empty/partial claim placeholder
+			}
 			return Result{}, err
 		}
 		return Result{Input: input, Target: target, Path: final}, nil
@@ -91,6 +94,9 @@ func ConvertOne(ctx context.Context, c *api2convert.Client, input, target, out s
 		return Result{Input: input, Target: target, Path: planned, Skipped: true}, nil
 	}
 	if _, err := res.Save(ctx, final); err != nil {
+		if o.OnConflict != "overwrite" {
+			_ = os.Remove(final) // don't strand an empty/partial claim placeholder
+		}
 		return Result{}, err
 	}
 	return Result{Input: input, Target: target, Path: final}, nil

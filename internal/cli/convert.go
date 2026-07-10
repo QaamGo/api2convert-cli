@@ -66,7 +66,7 @@ func addConvertFlags(c *cobra.Command, f *convertFlags) {
 	fl.StringVarP(&f.out, "out", "o", "", "output file or directory")
 	fl.StringVar(&f.outDir, "out-dir", "", "output directory")
 	fl.StringVar(&f.category, "category", "", "disambiguate an ambiguous target")
-	fl.StringArrayVar(&f.optionKVs, "option", nil, "per-format option key=value (repeatable)")
+	fl.StringArrayVar(&f.optionKVs, "option", nil, "per-format option key=value (repeatable; key:=value forces a literal string)")
 	fl.StringVar(&f.optionsFile, "options-file", "", "JSON file of conversion options")
 	fl.StringVar(&f.password, "password", "", "protect outputs with a download password")
 	fl.IntVar(&f.outputIndex, "output-index", 0, "which output file to select")
@@ -125,10 +125,7 @@ func runConvert(cmd *cobra.Command, args []string, f convertFlags) error {
 	}
 	out := chooseOut(f.out, f.outDir)
 
-	items := make([]run.Item, len(inputs))
-	for i, in := range inputs {
-		items[i] = run.Item{Input: in, Target: target}
-	}
+	items := itemsForTarget(inputs, target, out)
 	return runOrAsync(cmd, cl, items, out, ro, f)
 }
 
@@ -299,13 +296,21 @@ func parseOptions(kvs []string, file string) (map[string]any, error) {
 	for _, kv := range kvs {
 		k, v, ok := strings.Cut(kv, "=")
 		if !ok {
-			return nil, fmt.Errorf("--option must be key=value, got %q", kv)
+			return nil, fmt.Errorf("--option must be key=value (or key:=value for a literal string), got %q", kv)
+		}
+		// key:=value forces a literal string, bypassing coercion — needed for
+		// values that look numeric/boolean but must stay strings (e.g. 080).
+		if strings.HasSuffix(k, ":") {
+			opts[strings.TrimSuffix(k, ":")] = v
+			continue
 		}
 		opts[k] = coerce(v)
 	}
 	return opts, nil
 }
 
+// coerce maps a bare --option value to a bool/int/float when it unambiguously
+// looks like one, else keeps it a string. Use key:=value to force a string.
 func coerce(s string) any {
 	switch s {
 	case "true":
@@ -354,20 +359,32 @@ func chooseOut(out, outDir string) string {
 	return out
 }
 
+// resolvedInput is one input to convert. For files discovered by walking a
+// directory argument, rel is the input's path relative to that walked root, so
+// the output can mirror the source tree (photos/2021/a.jpg → out/2021/a.webp)
+// instead of flattening every match onto one directory. rel is "" for direct
+// file args, glob matches, URLs and stdin, which keep basename behavior.
+type resolvedInput struct {
+	path string
+	rel  string
+}
+
 // expandInputs turns raw args into a flat list of inputs: URLs and "-" pass
 // through; a directory is walked (with recursive) or errors; glob patterns are
 // expanded for shells that don't (e.g. Windows cmd).
-func expandInputs(args []string, recursive bool) ([]string, error) {
-	var out []string
+func expandInputs(args []string, recursive bool) ([]resolvedInput, error) {
+	var out []resolvedInput
 	for _, a := range args {
 		if a == "-" || isURLArg(a) {
-			out = append(out, a)
+			out = append(out, resolvedInput{path: a})
 			continue
 		}
 		info, err := os.Stat(a)
 		if err != nil {
 			if matches, gerr := filepath.Glob(a); gerr == nil && len(matches) > 0 {
-				out = append(out, matches...)
+				for _, m := range matches {
+					out = append(out, resolvedInput{path: m})
+				}
 				continue
 			}
 			return nil, fmt.Errorf("no such file: %s", a)
@@ -376,13 +393,19 @@ func expandInputs(args []string, recursive bool) ([]string, error) {
 			if !recursive {
 				return nil, fmt.Errorf("%s is a directory — pass --recursive to convert its contents", a)
 			}
+			root := a
 			err := filepath.WalkDir(a, func(p string, d os.DirEntry, err error) error {
 				if err != nil {
 					return err
 				}
-				if !d.IsDir() {
-					out = append(out, p)
+				if d.IsDir() {
+					return nil
 				}
+				rel, rerr := filepath.Rel(root, p)
+				if rerr != nil {
+					rel = filepath.Base(p)
+				}
+				out = append(out, resolvedInput{path: p, rel: rel})
 				return nil
 			})
 			if err != nil {
@@ -390,9 +413,64 @@ func expandInputs(args []string, recursive bool) ([]string, error) {
 			}
 			continue
 		}
-		out = append(out, a)
+		out = append(out, resolvedInput{path: a})
 	}
 	return out, nil
+}
+
+// itemsForTarget builds conversion items for one shared target.
+func itemsForTarget(inputs []resolvedInput, target, out string) []run.Item {
+	items := make([]run.Item, 0, len(inputs))
+	for _, in := range inputs {
+		items = append(items, itemFor(in, target, out))
+	}
+	return items
+}
+
+// itemFor builds a single conversion item, giving directory-walked inputs an
+// explicit per-item output that mirrors the source tree — under --out-dir when a
+// directory destination is given, else alongside the source file. Non-walked
+// inputs (rel == "") and an explicit --out FILE keep the default naming.
+func itemFor(in resolvedInput, target, out string) run.Item {
+	it := run.Item{Input: in.path, Target: target}
+	if in.rel == "" {
+		return it
+	}
+	if dir, ok := outDirOf(out); ok {
+		it.Out = filepath.Join(dir, replaceExt(in.rel, target))
+	} else if out == "" {
+		it.Out = replaceExt(in.path, target)
+	}
+	return it
+}
+
+// outDirOf reports the destination directory when out denotes one (a trailing
+// separator, or an existing directory), so tree-preserving outputs land inside it.
+func outDirOf(out string) (string, bool) {
+	if out == "" {
+		return "", false
+	}
+	if strings.HasSuffix(out, "/") || strings.HasSuffix(out, `\`) {
+		return strings.TrimRight(out, `/\`), true
+	}
+	if info, err := os.Stat(out); err == nil && info.IsDir() {
+		return out, true
+	}
+	return "", false
+}
+
+// replaceExt swaps a path's extension for ext, preserving any directory part.
+func replaceExt(p, ext string) string {
+	return strings.TrimSuffix(p, filepath.Ext(p)) + "." + ext
+}
+
+// inputPaths drops the tree metadata, for callers (merge) that take plain paths.
+func inputPaths(ins []resolvedInput) []string {
+	ps := make([]string, len(ins))
+	for i, in := range ins {
+		ps[i] = in.path
+	}
+	return ps
 }
 
 func isURLArg(s string) bool {

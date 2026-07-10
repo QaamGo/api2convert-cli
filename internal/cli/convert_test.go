@@ -61,6 +61,69 @@ func TestParseOptions(t *testing.T) {
 	}
 }
 
+func TestParseOptionsRawString(t *testing.T) {
+	// key:=value forces a literal string; key=value still coerces.
+	opts, err := parseOptions([]string{"pw:=080", "n=080", "flag:=true"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts["pw"] != "080" {
+		t.Errorf("pw should stay string %q, got %#v", "080", opts["pw"])
+	}
+	if opts["n"] != 80 {
+		t.Errorf("n should coerce to int 80, got %#v", opts["n"])
+	}
+	if opts["flag"] != "true" {
+		t.Errorf("flag should stay string \"true\", got %#v", opts["flag"])
+	}
+}
+
+func TestItemForPreservesTree(t *testing.T) {
+	walked := resolvedInput{path: filepath.Join("photos", "2021", "a.jpg"), rel: filepath.Join("2021", "a.jpg")}
+
+	// Under an --out-dir: mirror the subtree, swap the extension.
+	if it := itemFor(walked, "webp", "web"+string(os.PathSeparator)); it.Out != filepath.Join("web", "2021", "a.webp") {
+		t.Errorf("out-dir tree: got %q", it.Out)
+	}
+	// No destination: write alongside the source, preserving the tree.
+	if it := itemFor(walked, "webp", ""); it.Out != filepath.Join("photos", "2021", "a.webp") {
+		t.Errorf("alongside source: got %q", it.Out)
+	}
+	// Non-walked input (rel == "") keeps default naming — no per-item override.
+	if it := itemFor(resolvedInput{path: "a.jpg"}, "webp", "web"+string(os.PathSeparator)); it.Out != "" {
+		t.Errorf("non-walked should not set Out, got %q", it.Out)
+	}
+	// Explicit --out FILE (a single walked input) is respected — no override.
+	if it := itemFor(walked, "webp", "only.webp"); it.Out != "" {
+		t.Errorf("explicit out file should not be overridden, got %q", it.Out)
+	}
+}
+
+func TestExpandInputsCarriesRel(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "b.txt"), []byte("y"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := expandInputs([]string{dir}, true)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("walk: %v %v", got, err)
+	}
+	if got[0].rel != filepath.Join("sub", "b.txt") {
+		t.Errorf("rel = %q, want %q", got[0].rel, filepath.Join("sub", "b.txt"))
+	}
+	// Passthrough inputs carry no rel.
+	pt, _ := expandInputs([]string{"https://x/y", "-"}, false)
+	for _, in := range pt {
+		if in.rel != "" {
+			t.Errorf("passthrough %q should have empty rel, got %q", in.path, in.rel)
+		}
+	}
+}
+
 func TestExpandInputs(t *testing.T) {
 	dir := t.TempDir()
 	a := filepath.Join(dir, "a.txt")

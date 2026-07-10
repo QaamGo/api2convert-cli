@@ -5,6 +5,10 @@
 *.test
 .DS_Store
 
+# minisign signing key, materialized from a secret on the release runner — must
+# never be committed.
+/minisign.key
+
 # Local-only Go workspace: build against the sibling ../api2convert-go checkout
 # during co-development. Never committed — releases use the published module
 # (see go.mod require) so the release build is reproducible.

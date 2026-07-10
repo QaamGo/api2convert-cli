@@ -54,12 +54,13 @@ func newWatchCmd() *cobra.Command {
 			}
 
 			cfg := run.WatchConfig{
-				Dir:       args[0],
-				Target:    to,
-				OutDir:    outDir,
-				Recursive: recursive,
-				Include:   include,
-				Exclude:   exclude,
+				Dir:         args[0],
+				Target:      to,
+				OutDir:      outDir,
+				Recursive:   recursive,
+				Include:     include,
+				Exclude:     exclude,
+				Concurrency: resolvedFrom(ctx).Concurrency,
 				Options: run.Options{
 					ConversionOptions: opts,
 					Category:          category,

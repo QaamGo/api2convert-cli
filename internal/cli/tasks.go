@@ -89,6 +89,9 @@ func runTask(cmd *cobra.Command, args []string, f convertFlags, v tasks.Verb) er
 		if f.async || f.callback != "" {
 			return &clierr.UsageError{Err: errors.New("merge does not support --async")}
 		}
+		if f.outputIndex < 0 {
+			return &clierr.UsageError{Err: errors.New("--output-index must be >= 0")}
+		}
 		target := targetOr(f.to, v.DefaultTarget)
 		if target == "" {
 			return &clierr.UsageError{Err: errors.New("specify --to <format>")}
@@ -96,7 +99,7 @@ func runTask(cmd *cobra.Command, args []string, f convertFlags, v tasks.Verb) er
 		if err := gate(ctx, cl, v, target); err != nil {
 			return err
 		}
-		res, err := run.Merge(ctx, cl, inputs, target, out, ro, newProgress())
+		res, err := run.Merge(ctx, cl, inputPaths(inputs), target, out, ro, newProgress())
 		if err != nil {
 			return err
 		}
@@ -107,12 +110,12 @@ func runTask(cmd *cobra.Command, args []string, f convertFlags, v tasks.Verb) er
 		for _, in := range inputs {
 			t := f.to
 			if t == "" {
-				t = extOf(in)
+				t = extOf(in.path)
 			}
 			if t == "" {
-				return &clierr.UsageError{Err: fmt.Errorf("cannot determine target for %q — pass --to", in)}
+				return &clierr.UsageError{Err: fmt.Errorf("cannot determine target for %q — pass --to", in.path)}
 			}
-			items = append(items, run.Item{Input: in, Target: t})
+			items = append(items, itemFor(in, t, out))
 		}
 		return runOrAsync(cmd, cl, items, out, ro, f)
 
@@ -124,10 +127,7 @@ func runTask(cmd *cobra.Command, args []string, f convertFlags, v tasks.Verb) er
 		if err := gate(ctx, cl, v, target); err != nil {
 			return err
 		}
-		items := make([]run.Item, 0, len(inputs))
-		for _, in := range inputs {
-			items = append(items, run.Item{Input: in, Target: target})
-		}
+		items := itemsForTarget(inputs, target, out)
 		return runOrAsync(cmd, cl, items, out, ro, f)
 	}
 }
@@ -135,7 +135,11 @@ func runTask(cmd *cobra.Command, args []string, f convertFlags, v tasks.Verb) er
 // runItems runs one or many items, emitting a single result or a batch summary.
 func runItems(cmd *cobra.Command, cl *api2convert.Client, items []run.Item, out string, ro run.Options, failFast bool) error {
 	if len(items) == 1 {
-		res, err := run.ConvertOne(cmd.Context(), cl, items[0].Input, items[0].Target, out, ro, newProgress())
+		out0 := out
+		if items[0].Out != "" {
+			out0 = items[0].Out
+		}
+		res, err := run.ConvertOne(cmd.Context(), cl, items[0].Input, items[0].Target, out0, ro, newProgress())
 		if err != nil {
 			return err
 		}

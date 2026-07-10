@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,13 +21,41 @@ import (
 	"runtime"
 	"strings"
 
+	"aead.dev/minisign"
 	up "github.com/minio/selfupdate"
+	"golang.org/x/mod/semver"
 )
 
 const (
 	repo    = "QaamGo/api2convert-cli"
 	binName = "api2convert"
 	maxSize = 200 << 20 // 200 MB safety cap
+)
+
+// minisignPublicKey is the release signing key. checksums.txt is signed with the
+// matching private key at release time (the `signs` block in .goreleaser.yaml),
+// and self-update verifies checksums.txt.minisig against this key. A signature —
+// unlike the same-origin checksum — proves the release was cut by the key holder,
+// not merely that the download wasn't corrupted or a compromised release swapped.
+//
+// Empty until the keypair is provisioned (see SIGNING.md): in that state
+// self-update verifies the SHA-256 checksum only, exactly as before. Once set,
+// a missing or invalid signature aborts the update.
+//
+// Key ID BE5B81218245C1E6. The matching private key is the MINISIGN_PRIVATE_KEY
+// release secret; checksums.txt is signed by the `signs` block in .goreleaser.yaml.
+//
+// A var (not const) only so tests can substitute a throwaway key; it is never
+// reassigned outside tests.
+var minisignPublicKey = "RWTmwUWCIYFbvtz1yIJF1SeVNqQpHEPD1M9MU68e8LSL9pYlD464IsoC"
+
+// Seams for tests: overridden to point at an httptest server and to capture the
+// binary that would be applied, instead of hitting GitHub and replacing the
+// running executable. Never changed in production.
+var (
+	httpClient    = http.DefaultClient
+	githubAPIBase = "https://api.github.com"
+	applyBinary   = func(r io.Reader) error { return up.Apply(r, up.Options{}) }
 )
 
 // Result reports the outcome of a check/update.
@@ -53,7 +82,7 @@ func Run(ctx context.Context, current string) (Result, error) {
 		return Result{}, err
 	}
 	latest := strings.TrimPrefix(rel.TagName, "v")
-	if latest == current {
+	if !isNewer(latest, current) {
 		return Result{Updated: false, From: current, To: latest}, nil
 	}
 	if pm, ok := packageManaged(); ok {
@@ -75,6 +104,9 @@ func Run(ctx context.Context, current string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	if err := verifySignature(ctx, rel, sums); err != nil {
+		return Result{}, err
+	}
 	if err := verifyChecksum(archiveBytes, asset, sums); err != nil {
 		return Result{}, err
 	}
@@ -82,18 +114,30 @@ func Run(ctx context.Context, current string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if err := up.Apply(bytes.NewReader(bin), up.Options{}); err != nil {
+	if err := applyBinary(bytes.NewReader(bin)); err != nil {
 		return Result{}, err
 	}
 	return Result{Updated: true, From: current, To: latest}, nil
 }
 
+// isNewer reports whether release version latest is strictly newer than the
+// installed current. A plain string compare would "update" whenever the strings
+// differ — downgrading a newer local/dev build, or re-installing an older
+// release after the latest was yanked. semver.Compare needs a leading "v"; an
+// unparseable current (e.g. a "dev" build) sorts below any real release, so it
+// still updates.
+func isNewer(latest, current string) bool {
+	return semver.Compare("v"+latest, "v"+current) > 0
+}
+
+type asset struct {
+	Name string `json:"name"`
+	URL  string `json:"browser_download_url"`
+}
+
 type release struct {
-	TagName string `json:"tag_name"`
-	Assets  []struct {
-		Name string `json:"name"`
-		URL  string `json:"browser_download_url"`
-	} `json:"assets"`
+	TagName string  `json:"tag_name"`
+	Assets  []asset `json:"assets"`
 }
 
 func (r release) assetURL(name string) string {
@@ -106,13 +150,13 @@ func (r release) assetURL(name string) string {
 }
 
 func latestRelease(ctx context.Context) (release, error) {
-	url := "https://api.github.com/repos/" + repo + "/releases/latest"
+	url := githubAPIBase + "/repos/" + repo + "/releases/latest"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return release{}, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return release{}, err
 	}
@@ -140,7 +184,7 @@ func download(ctx context.Context, url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -149,6 +193,40 @@ func download(ctx context.Context, url string) ([]byte, error) {
 		return nil, fmt.Errorf("download failed: %s", resp.Status)
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, maxSize))
+}
+
+// verifySignature checks the minisign signature over checksums.txt when a
+// signing key is embedded. With no key it is a no-op (checksum-only, as before).
+// With a key it is mandatory: an unsigned release or a bad signature aborts.
+func verifySignature(ctx context.Context, rel release, sums []byte) error {
+	if minisignPublicKey == "" {
+		return nil
+	}
+	sigURL := rel.assetURL("checksums.txt.minisig")
+	if sigURL == "" {
+		return fmt.Errorf("release %s is not signed (checksums.txt.minisig missing)", rel.TagName)
+	}
+	sig, err := download(ctx, sigURL)
+	if err != nil {
+		return err
+	}
+	if err := verifyMinisignSignature(minisignPublicKey, sums, sig); err != nil {
+		return fmt.Errorf("checksums.txt %w for %s", err, rel.TagName)
+	}
+	return nil
+}
+
+// verifyMinisignSignature reports whether signature is a valid minisign
+// signature over message for the given textual public key.
+func verifyMinisignSignature(publicKey string, message, signature []byte) error {
+	var pub minisign.PublicKey
+	if err := pub.UnmarshalText([]byte(publicKey)); err != nil {
+		return fmt.Errorf("invalid signing key: %w", err)
+	}
+	if !minisign.Verify(pub, message, signature) {
+		return errors.New("signature verification failed")
+	}
+	return nil
 }
 
 func verifyChecksum(data []byte, name string, sums []byte) error {

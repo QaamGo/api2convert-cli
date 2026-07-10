@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	api2convert "github.com/QaamGo/api2convert-go/v10"
 	"github.com/spf13/cobra"
 
 	"github.com/QaamGo/api2convert-cli/internal/clierr"
@@ -21,52 +22,65 @@ func newLoginCmd() *cobra.Command {
 		Short: "Save and validate your API key",
 		Long:  "Prompts for your api2convert API key (masked as you type), validates it against the API, and saves it to the config file.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			key := gf.apiKey
-			if key == "" {
-				raw, err := ui.ReadSecret("Enter your api2convert API key: ", os.Stdin, cmd.ErrOrStderr())
-				if err != nil {
-					if errors.Is(err, ui.ErrInterrupted) {
-						return &clierr.Coded{Code: clierr.ExitInterrupted}
-					}
-					if errors.Is(err, io.EOF) {
-						return &clierr.UsageError{Err: errors.New("no API key provided")}
-					}
-					return &clierr.UsageError{Err: errors.New("could not read API key")}
-				}
-				key = strings.TrimSpace(raw)
-			}
-			if key == "" {
-				return &clierr.UsageError{Err: errors.New("no API key provided")}
-			}
-
-			res := resolvedFrom(cmd.Context())
-			res.APIKey = key
-			c, err := buildClient(res)
-			if err != nil {
+			if _, err := ensureLogin(cmd); err != nil {
 				return err
 			}
-			prog := newProgress()
-			prog.Start("Validating…")
-			_, err = c.Contracts().Get(cmd.Context())
-			prog.Stop()
-			if err != nil {
-				return err
-			}
-
-			fileCfg, err := config.Load()
-			if err != nil {
-				return err
-			}
-			fileCfg.APIKey = key
-			if err := config.Save(fileCfg); err != nil {
-				return err
-			}
-			p, _ := config.File()
-			fmt.Fprintln(cmd.OutOrStdout(), ui.Success("Signed in. Key saved to "+p))
 			fmt.Fprintln(cmd.OutOrStdout(), ui.Dim("Try:  api2convert convert myfile.docx --to pdf"))
 			return nil
 		},
 	}
+}
+
+// ensureLogin prompts for an API key (masked), validates it against the API,
+// saves it to the config file, and returns a ready SDK client built from it. The
+// resolved config on the command context is updated so later calls (e.g. the
+// catalog cache key) see the new key. Shared by the `login` command and the
+// wizard's first-run path.
+func ensureLogin(cmd *cobra.Command) (*api2convert.Client, error) {
+	key := gf.apiKey
+	if key == "" {
+		raw, err := ui.ReadSecret("Enter your api2convert API key: ", os.Stdin, cmd.ErrOrStderr())
+		if err != nil {
+			if errors.Is(err, ui.ErrInterrupted) {
+				return nil, &clierr.Coded{Code: clierr.ExitInterrupted}
+			}
+			if errors.Is(err, io.EOF) {
+				return nil, &clierr.UsageError{Err: errors.New("no API key provided")}
+			}
+			return nil, &clierr.UsageError{Err: errors.New("could not read API key")}
+		}
+		key = strings.TrimSpace(raw)
+	}
+	if key == "" {
+		return nil, &clierr.UsageError{Err: errors.New("no API key provided")}
+	}
+
+	res := resolvedFrom(cmd.Context())
+	res.APIKey = key
+	c, err := buildClient(res)
+	if err != nil {
+		return nil, err
+	}
+	prog := newProgress()
+	prog.Start("Validating…")
+	_, err = c.Contracts().Get(cmd.Context())
+	prog.Stop()
+	if err != nil {
+		return nil, err
+	}
+
+	fileCfg, err := config.Load()
+	if err != nil {
+		return nil, err
+	}
+	fileCfg.APIKey = key
+	if err := config.Save(fileCfg); err != nil {
+		return nil, err
+	}
+	cmd.SetContext(withResolved(cmd.Context(), res))
+	p, _ := config.File()
+	fmt.Fprintln(cmd.OutOrStdout(), ui.Success("Signed in. Key saved to "+p))
+	return c, nil
 }
 
 func newConfigCmd() *cobra.Command {

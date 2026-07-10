@@ -13,8 +13,10 @@ on:
         type: boolean
         default: true
 
+# Least privilege by default: only the goreleaser job (which creates the Release
+# and uploads assets) is granted contents: write. The test job just reads code.
 permissions:
-  contents: write # GoReleaser creates the GitHub Release and uploads assets
+  contents: read
 
 jobs:
   # Gate the whole release on the test suite (unit + live conformance). If any
@@ -27,8 +29,8 @@ jobs:
     env:
       API2CONVERT_API_KEY: ${{ secrets.API2CONVERT_API_KEY }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.25"
           cache: true
@@ -50,17 +52,19 @@ jobs:
     # from this single job; the Windows exe is signed in place by the GoReleaser
     # build hook (see .goreleaser.yaml) before archiving.
     runs-on: windows-latest
+    permissions:
+      contents: write # create the GitHub Release and upload assets
     defaults:
       run:
         # The assert steps below are written in bash; Git Bash ships on the
         # windows-latest image, so force bash instead of the default PowerShell.
         shell: bash
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.25"
           cache: true
@@ -95,7 +99,19 @@ jobs:
           dotnet tool install --global --prerelease sign
           "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      - uses: goreleaser/goreleaser-action@v7
+      # Materialize the minisign signing key (password-less) so the GoReleaser
+      # `signs` block can sign checksums.txt non-interactively. choco is
+      # preinstalled on windows-latest; minisign lands on PATH for later steps.
+      # If MINISIGN_PRIVATE_KEY is unset, write nothing — GoReleaser then fails
+      # the sign step loudly rather than shipping an unsigned release.
+      - name: Prepare minisign signing key
+        env:
+          MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
+        run: |
+          choco install -y --no-progress minisign
+          printf '%s\n' "$MINISIGN_PRIVATE_KEY" > minisign.key
+
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           version: "~> v2"
           # Real tag push -> full release. Manual dry-run -> --snapshot (no publish).
