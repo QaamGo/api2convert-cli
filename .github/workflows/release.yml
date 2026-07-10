@@ -101,17 +101,27 @@ jobs:
           dotnet tool install --global --prerelease sign
           "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      # Materialize the minisign signing key (password-less) so the GoReleaser
-      # `signs` block can sign checksums.txt non-interactively. choco is
-      # preinstalled on windows-latest; minisign lands on PATH for later steps.
-      # If MINISIGN_PRIVATE_KEY is unset, write nothing — GoReleaser then fails
-      # the sign step loudly rather than shipping an unsigned release.
-      - name: Prepare minisign signing key
+      # Install upstream minisign and put it on PATH for the GoReleaser `signs`
+      # block. Chocolatey's package is stuck at v0.8.0 (2021), which cannot read
+      # modern secret keys — including password-less (-W) keys — and fails with
+      # "Unsupported key derivation function".
+      - name: Install minisign
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Invoke-WebRequest -Uri 'https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-win64.zip' -OutFile minisign.zip
+          Expand-Archive -Force minisign.zip minisign-dist
+          $exe = Get-ChildItem -Recurse -Filter minisign.exe minisign-dist | Select-Object -First 1
+          if (-not $exe) { throw 'minisign.exe not found in the release archive' }
+          Add-Content -Path $env:GITHUB_PATH -Value $exe.Directory.FullName
+
+      # Materialize the signing key from the secret for the `signs` block. If
+      # MINISIGN_PRIVATE_KEY is unset, GoReleaser fails the sign step loudly
+      # rather than shipping an unsigned release.
+      - name: Write minisign signing key
         env:
           MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
-        run: |
-          choco install -y --no-progress minisign
-          printf '%s\n' "$MINISIGN_PRIVATE_KEY" > minisign.key
+        run: printf '%s\n' "$MINISIGN_PRIVATE_KEY" > minisign.key
 
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
