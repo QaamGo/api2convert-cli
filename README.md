@@ -4,6 +4,8 @@ Convert, compress and transform files from the command line — a single,
 self-contained binary for the [api2convert](https://www.api2convert.com) API. No
 Node, Python or Java runtime to install.
 
+![api2convert CLI demo — signing in, converting a single file, and batch-converting a folder](demo/demo.gif)
+
 - **One download, run it** — static binaries for Windows, macOS and Linux.
 - **Guided wizard** for non-technical users, plus a full flag interface for scripts.
 - **Automation-ready** — batch, recursive, folder watch, `--json`, stable exit codes.
