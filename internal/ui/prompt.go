@@ -17,6 +17,25 @@ import (
 // it as a clean cancellation.
 var ErrInterrupted = errors.New("interrupted")
 
+// Confirm writes prompt to out and reads a single yes/no line from in.
+// "y"/"yes" is true and "n"/"no" is false (case-insensitive, surrounding
+// whitespace ignored); an empty line, an unrecognized answer, or a read error /
+// EOF all return def. That way just pressing Enter — or a piped/interrupted
+// prompt with no clear answer — cleanly falls back to the default instead of
+// blocking or failing.
+func Confirm(prompt string, in io.Reader, out io.Writer, def bool) bool {
+	fmt.Fprint(out, prompt)
+	line, _ := bufio.NewReader(in).ReadString('\n')
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes":
+		return true
+	case "n", "no":
+		return false
+	default:
+		return def
+	}
+}
+
 // ReadSecret writes prompt to out, then reads a secret from in.
 //
 // When in is an interactive terminal the typed characters are not shown, but

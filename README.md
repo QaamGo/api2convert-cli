@@ -108,6 +108,20 @@ Settings resolve in the order **flag → environment → config file → default
   on Linux, `%AppData%\api2convert` on Windows, `~/Library/Application Support`
   on macOS).
 
+## Updating
+
+Upgrade in place, verifying the download's checksum and signature:
+
+```sh
+api2convert self-update
+```
+
+In an interactive terminal the CLI also checks for a newer release at most **once
+every 7 days** and asks whether to update; just press Enter to keep going. Silence
+the check with `--no-update-check` or `API2CONVERT_NO_UPDATE_CHECK=1`. Homebrew and
+Scoop installs are upgraded through the package manager (`brew upgrade api2convert`
+/ `scoop update api2convert`) instead.
+
 ## Exit codes
 
 Every command exits with a stable, documented status — handy for scripting. In

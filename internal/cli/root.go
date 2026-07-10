@@ -19,17 +19,18 @@ import (
 type BuildInfo struct{ Version, Commit, Date string }
 
 type globalFlags struct {
-	apiKey      string
-	baseURL     string
-	timeout     string
-	pollTimeout string
-	maxRetries  int
-	output      string
-	concurrency int
-	json        bool
-	quiet       bool
-	noColor     bool
-	verbose     bool
+	apiKey        string
+	baseURL       string
+	timeout       string
+	pollTimeout   string
+	maxRetries    int
+	output        string
+	concurrency   int
+	json          bool
+	quiet         bool
+	noColor       bool
+	verbose       bool
+	noUpdateCheck bool
 }
 
 var (
@@ -100,6 +101,13 @@ func newRootCmd() *cobra.Command {
 			cmd.SetContext(withResolved(cmd.Context(), res))
 			return nil
 		},
+		PersistentPostRunE: func(cmd *cobra.Command, _ []string) error {
+			// After a successful command, in an interactive session, check for a
+			// newer release at most once a week and offer to update. Never fails
+			// the command the user ran.
+			maybePromptUpdate(cmd)
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if ui.IsTTY(os.Stdin) && ui.IsTTY(os.Stdout) {
 				return runWizard(cmd)
@@ -120,6 +128,7 @@ func newRootCmd() *cobra.Command {
 	pf.BoolVarP(&gf.quiet, "quiet", "q", false, "suppress progress and chatter")
 	pf.BoolVar(&gf.noColor, "no-color", false, "disable colored output")
 	pf.BoolVarP(&gf.verbose, "verbose", "v", false, "verbose output")
+	pf.BoolVar(&gf.noUpdateCheck, "no-update-check", false, "don't check for a newer release")
 
 	root.SetFlagErrorFunc(func(_ *cobra.Command, e error) error {
 		return &clierr.UsageError{Err: e}

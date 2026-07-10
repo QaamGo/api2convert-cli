@@ -82,7 +82,7 @@ func Run(ctx context.Context, current string) (Result, error) {
 		return Result{}, err
 	}
 	latest := strings.TrimPrefix(rel.TagName, "v")
-	if !isNewer(latest, current) {
+	if !IsNewer(latest, current) {
 		return Result{Updated: false, From: current, To: latest}, nil
 	}
 	if pm, ok := packageManaged(); ok {
@@ -120,13 +120,13 @@ func Run(ctx context.Context, current string) (Result, error) {
 	return Result{Updated: true, From: current, To: latest}, nil
 }
 
-// isNewer reports whether release version latest is strictly newer than the
+// IsNewer reports whether release version latest is strictly newer than the
 // installed current. A plain string compare would "update" whenever the strings
 // differ — downgrading a newer local/dev build, or re-installing an older
 // release after the latest was yanked. semver.Compare needs a leading "v"; an
 // unparseable current (e.g. a "dev" build) sorts below any real release, so it
 // still updates.
-func isNewer(latest, current string) bool {
+func IsNewer(latest, current string) bool {
 	return semver.Compare("v"+latest, "v"+current) > 0
 }
 
