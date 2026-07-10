@@ -2,7 +2,6 @@
 
 [![CI](https://github.com/QaamGo/api2convert-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/QaamGo/api2convert-cli/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/QaamGo/api2convert-cli)](https://github.com/QaamGo/api2convert-cli/releases)
-![Go](https://img.shields.io/badge/go-%E2%89%A5%201.25-00ADD8)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 Convert, compress and transform files from the command line — a single,
