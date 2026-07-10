@@ -33,6 +33,7 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.25"
+          check-latest: true # build releases with the newest 1.25.x (picks up toolchain security fixes)
           cache: true
       - run: go build ./...
       - run: go test ./...
@@ -67,6 +68,7 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.25"
+          check-latest: true # build releases with the newest 1.25.x (picks up toolchain security fixes)
           cache: true
 
       # Org convention: the tag's base version must equal the committed version
