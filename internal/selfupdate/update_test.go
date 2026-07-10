@@ -46,8 +46,8 @@ func TestIsNewer(t *testing.T) {
 		{"1.0.0", "dev", true}, // unparseable current sorts below any real release
 	}
 	for _, c := range cases {
-		if got := isNewer(c.latest, c.current); got != c.want {
-			t.Errorf("isNewer(%q, %q) = %v, want %v", c.latest, c.current, got, c.want)
+		if got := IsNewer(c.latest, c.current); got != c.want {
+			t.Errorf("IsNewer(%q, %q) = %v, want %v", c.latest, c.current, got, c.want)
 		}
 	}
 }

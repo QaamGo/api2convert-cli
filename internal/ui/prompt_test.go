@@ -5,8 +5,41 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strings"
 	"testing"
 )
+
+func TestConfirm(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		def  bool
+		want bool
+	}{
+		{name: "y is yes", in: "y\n", def: false, want: true},
+		{name: "yes is yes", in: "YES\n", def: false, want: true},
+		{name: "n is no", in: "n\n", def: true, want: false},
+		{name: "no is no", in: "No\n", def: true, want: false},
+		{name: "empty line uses default (no)", in: "\n", def: false, want: false},
+		{name: "empty line uses default (yes)", in: "\n", def: true, want: true},
+		{name: "eof with nothing typed uses default", in: "", def: false, want: false},
+		{name: "unrecognized answer uses default", in: "maybe\n", def: false, want: false},
+		{name: "surrounding whitespace is trimmed", in: "  y  \n", def: false, want: true},
+		{name: "no trailing newline still parses", in: "y", def: false, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			got := Confirm("Update? ", strings.NewReader(tt.in), &out, tt.def)
+			if got != tt.want {
+				t.Errorf("Confirm(%q, def=%v) = %v, want %v", tt.in, tt.def, got, tt.want)
+			}
+			if out.String() != "Update? " {
+				t.Errorf("prompt = %q, want %q", out.String(), "Update? ")
+			}
+		})
+	}
+}
 
 func TestMaskedInput(t *testing.T) {
 	tests := []struct {

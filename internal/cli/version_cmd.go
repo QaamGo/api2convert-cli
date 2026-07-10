@@ -28,7 +28,7 @@ func newVersionCmd() *cobra.Command {
 				fmt.Fprintln(cmd.ErrOrStderr(), ui.Dim("(could not check for updates: "+err.Error()+")"))
 				return nil
 			}
-			if res.To != "" && res.To != res.From {
+			if selfupdate.IsNewer(res.To, res.From) {
 				fmt.Fprintln(cmd.OutOrStdout(), ui.Bold("A newer version is available: "+res.To))
 				fmt.Fprintln(cmd.OutOrStdout(), ui.Dim("  run 'api2convert self-update' to upgrade"))
 			} else {
