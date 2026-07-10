@@ -109,11 +109,16 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          Invoke-WebRequest -Uri 'https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-win64.zip' -OutFile minisign.zip
-          Expand-Archive -Force minisign.zip minisign-dist
+          # Download/extract OUTSIDE the repo (RUNNER_TEMP) so the working tree
+          # stays clean — GoReleaser aborts a real (non-snapshot) release when git
+          # is dirty (https://goreleaser.com/errors/dirty).
+          $zip = Join-Path $env:RUNNER_TEMP 'minisign.zip'
+          $dst = Join-Path $env:RUNNER_TEMP 'minisign'
+          Invoke-WebRequest -Uri 'https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-win64.zip' -OutFile $zip
+          Expand-Archive -Force $zip $dst
           # The win64 zip ships both x86_64 and aarch64 builds; pick x86_64 for
           # the amd64 runner (a stray aarch64 exe fails with a compatibility error).
-          $exe = Get-ChildItem -Recurse -Filter minisign.exe minisign-dist |
+          $exe = Get-ChildItem -Recurse -Filter minisign.exe $dst |
                  Where-Object { $_.FullName -match 'x86_64' } | Select-Object -First 1
           if (-not $exe) { throw 'x86_64 minisign.exe not found in the release archive' }
           Add-Content -Path $env:GITHUB_PATH -Value $exe.Directory.FullName
