@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	api2convert "github.com/QaamGo/api2convert-go/v10"
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 
@@ -20,7 +21,19 @@ func runWizard(cmd *cobra.Command) error {
 	ctx := cmd.Context()
 	cl, err := clientFrom(ctx)
 	if err != nil {
-		return err
+		// First run (e.g. a Windows double-click with no key saved yet): instead
+		// of failing with "No API key found" — a message a double-click user never
+		// gets to read before the console closes — prompt for the key inline.
+		var cfgErr *api2convert.ConfigError
+		if !errors.As(err, &cfgErr) {
+			return err
+		}
+		fmt.Fprintln(cmd.ErrOrStderr(), ui.Dim("No API key found yet — let's set one up."))
+		cl, err = ensureLogin(cmd)
+		if err != nil {
+			return err
+		}
+		ctx = cmd.Context() // ensureLogin refreshed the resolved config (new key)
 	}
 
 	var inputPath string

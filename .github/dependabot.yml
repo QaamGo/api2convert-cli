@@ -1,0 +1,21 @@
+version: 2
+updates:
+  # Go module dependencies (e.g. the SDK, cobra, huh, minisign, x/*).
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      # Batch the low-risk golang.org/x/* bumps into one PR.
+      golang-x:
+        patterns:
+          - "golang.org/x/*"
+
+  # GitHub Actions used by CI and the release pipeline. Keeps the pinned action
+  # versions current (and, once SHA-pinned, updates the SHA + version comment).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10

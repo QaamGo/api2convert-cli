@@ -20,4 +20,16 @@ We aim to acknowledge reports within a few business days.
 ## Release integrity
 
 Release archives are published with a `checksums.txt` (SHA-256). The install
-scripts and `api2convert self-update` verify the checksum before installing.
+scripts and `api2convert self-update` verify this checksum before installing, and
+fail closed if a matching entry is missing.
+
+Note the current guarantee: because `checksums.txt` is fetched from the same
+GitHub release as the archive, the checksum protects against **corrupted or
+truncated downloads**, not against a tampered or compromised release. Release
+authenticity is additionally provided by a detached **minisign** signature over
+`checksums.txt`, which `self-update` verifies against a public key embedded in the
+binary — refusing to update on a missing or invalid signature. See
+[SIGNING.md](SIGNING.md) for the signing setup and current status.
+
+The installed binaries are also OS-code-signed (Windows Authenticode, macOS
+Developer ID + notarization); see [SIGNING.md](SIGNING.md).

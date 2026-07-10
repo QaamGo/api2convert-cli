@@ -33,8 +33,11 @@ Invoke-WebRequest "$base/checksums.txt" -OutFile "$tmp\checksums.txt"
 
 Write-Host "> Verifying checksum"
 $want = (Get-Content "$tmp\checksums.txt" | Where-Object { $_ -match [regex]::Escape($asset) + "$" }) -split '\s+' | Select-Object -First 1
+# Fail closed: if the asset has no entry in checksums.txt, $want is empty — do
+# NOT skip verification and install unverified.
+if (-not $want) { throw "no checksum listed for $asset in checksums.txt" }
 $got  = (Get-FileHash "$tmp\$asset" -Algorithm SHA256).Hash.ToLower()
-if ($want -and ($got -ne $want.ToLower())) { throw "checksum verification failed" }
+if ($got -ne $want.ToLower()) { throw "checksum verification failed" }
 
 Expand-Archive -Path "$tmp\$asset" -DestinationPath $tmp -Force
 

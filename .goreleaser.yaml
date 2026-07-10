@@ -100,6 +100,21 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
+# Detached minisign signature over checksums.txt, uploaded as
+# checksums.txt.minisig. `api2convert self-update` verifies it against the public
+# key embedded in the binary (internal/selfupdate: minisignPublicKey), so a
+# compromised or unsigned release is rejected — the same-origin checksum alone
+# only catches corruption. The private key is materialized to ./minisign.key from
+# the MINISIGN_PRIVATE_KEY secret by release.yml before this runs; minisign is
+# installed there too. CI's credential-less snapshot passes --skip=sign.
+signs:
+  - id: checksums
+    artifacts: checksum
+    signature: "${artifact}.minisig"
+    cmd: minisign
+    args: ["-S", "-s", "minisign.key", "-m", "${artifact}", "-x", "${signature}"]
+    stdin: ""
+
 homebrew_casks:
   - name: api2convert
     # Only publish the cask on stable tags — a prerelease (e.g. v1.0.0-rc.1) must
