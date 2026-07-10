@@ -8,6 +8,7 @@ import (
 
 	api2convert "github.com/QaamGo/api2convert-go/v10"
 
+	"github.com/QaamGo/api2convert-cli/internal/clierr"
 	"github.com/QaamGo/api2convert-cli/internal/ui"
 )
 
@@ -58,7 +59,9 @@ func Merge(ctx context.Context, c *api2convert.Client, inputs []string, target, 
 
 	idx := o.OutputIndex
 	if idx < 0 || idx >= len(done.Output) {
-		idx = 0
+		return Result{}, &clierr.UsageError{Err: fmt.Errorf(
+			"--output-index %d is out of range: this job produced %d output file(s) (valid 0–%d)",
+			idx, len(done.Output), len(done.Output)-1)}
 	}
 	outFile := done.Output[idx]
 

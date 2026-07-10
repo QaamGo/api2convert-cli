@@ -24,8 +24,8 @@ Node, Python or Java runtime to install.
 1. Grab **`api2convert_<version>_windows_amd64.zip`** from the
    [Releases](https://github.com/QaamGo/api2convert-cli/releases) page
    (use the `arm64` zip on ARM PCs).
-2. Unzip it and run **`api2convert.exe`** — double-click for the guided wizard,
-   or call it from PowerShell / CMD.
+2. Unzip it and run **`api2convert.exe`** — double-click for the guided wizard
+   (it walks you through signing in on first run), or call it from PowerShell / CMD.
 
 Prefer a one-liner that also adds `api2convert` to your `PATH`? Run in PowerShell:
 
@@ -52,7 +52,7 @@ Prefer native packages? Download the `.deb` / `.rpm` from the
 
 ```sh
 sudo dpkg -i api2convert_<version>_linux_amd64.deb   # Debian/Ubuntu
-sudo rpm -i  api2convert-<version>.x86_64.rpm         # Fedora/RHEL
+sudo rpm -i  api2convert_<version>_linux_amd64.rpm   # Fedora/RHEL
 ```
 
 <sub>Homebrew works on Linux too: `brew install qaamgo/tap/api2convert`</sub>
@@ -73,8 +73,11 @@ Run `api2convert` with no arguments in a terminal to launch the interactive wiza
 api2convert convert https://example-files.online-convert.com/raster%20image/jpg/example_small.jpg --to pdf -o out/
 cat scan.tiff | api2convert convert - --to pdf -o scan.pdf
 
-# Bulk + recursive, with per-format options
+# Bulk + recursive, with per-format options (subfolders are preserved under --out-dir)
 api2convert batch ./images --to webp --option quality=80 --out-dir web/ --recursive
+
+# Force a value to stay a literal string (key:=value skips number/bool coercion)
+api2convert convert in.png --to png --option zip_password:=080
 
 # High-level verbs
 api2convert compress big-scan.pdf
@@ -104,6 +107,24 @@ Settings resolve in the order **flag → environment → config file → default
 - Config file: `api2convert config path` (0600; `~/.config/api2convert/config.toml`
   on Linux, `%AppData%\api2convert` on Windows, `~/Library/Application Support`
   on macOS).
+
+## Exit codes
+
+Every command exits with a stable, documented status — handy for scripting. In
+`--json` mode the same code is also in the error envelope (`exit_code`).
+
+| Code | Meaning |
+|-----:|---------|
+| `0` | Success |
+| `1` | Generic error |
+| `2` | Usage error (unknown/invalid flag or argument) |
+| `3` | Authentication — missing or rejected API key |
+| `4` | Quota — out of credits, or rate-limited |
+| `5` | Validation — bad target/option, or not found |
+| `6` | Conversion failed |
+| `7` | Timeout — job still running server-side (check `jobs status`) |
+| `8` | Network — couldn't reach api2convert |
+| `130` | Interrupted (Ctrl-C / SIGTERM) |
 
 ## Shell completion
 

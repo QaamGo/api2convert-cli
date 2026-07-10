@@ -40,6 +40,12 @@ var (
 // Execute builds and runs the root command, returning the process exit code.
 func Execute(ctx context.Context, bi BuildInfo) int {
 	buildInfo = bi
+	// Let a Windows Explorer double-click launch the tool: by default cobra's
+	// mousetrap prints "open cmd.exe and run it from there" and exits, which
+	// breaks the README's headline "double-click for the guided wizard". Clearing
+	// the text disables the mousetrap; the no-arg TTY path runs the wizard, which
+	// is exactly what a double-click user wants.
+	cobra.MousetrapHelpText = ""
 	root := newRootCmd()
 	if err := root.ExecuteContext(ctx); err != nil {
 		msg, code := clierr.Classify(err)

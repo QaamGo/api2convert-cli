@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"sort"
 	"sync"
 
 	api2convert "github.com/QaamGo/api2convert-go/v10"
@@ -12,9 +13,13 @@ import (
 )
 
 // Item is one unit of batch work: an input and the target to convert it to.
+// Out, when set, overrides the shared output for this item — used to mirror a
+// walked directory tree (photos/2021/a.jpg → out/2021/a.webp) instead of
+// flattening every input onto one directory.
 type Item struct {
 	Input  string
 	Target string
+	Out    string
 }
 
 // FileError pairs a failed input with its error.
@@ -72,7 +77,11 @@ func BatchItems(ctx context.Context, c *api2convert.Client, items []Item, out st
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			res, err := ConvertOne(cctx, c, it.Input, it.Target, out, o, silent)
+			itemOut := out
+			if it.Out != "" {
+				itemOut = it.Out
+			}
+			res, err := ConvertOne(cctx, c, it.Input, it.Target, itemOut, o, silent)
 
 			mu.Lock()
 			done++
@@ -90,5 +99,10 @@ func BatchItems(ctx context.Context, c *api2convert.Client, items []Item, out st
 	}
 	wg.Wait()
 	overall.Stop()
+
+	// Workers finish in nondeterministic order; sort by input so --json output
+	// (and the human summary) is stable across runs and diffable.
+	sort.Slice(sum.Results, func(i, j int) bool { return sum.Results[i].Input < sum.Results[j].Input })
+	sort.Slice(sum.Errors, func(i, j int) bool { return sum.Errors[i].Input < sum.Errors[j].Input })
 	return sum
 }
