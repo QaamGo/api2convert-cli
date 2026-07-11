@@ -14,12 +14,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"aead.dev/minisign"
 	up "github.com/minio/selfupdate"
@@ -53,10 +55,24 @@ var minisignPublicKey = "RWTmwUWCIYFbvtz1yIJF1SeVNqQpHEPD1M9MU68e8LSL9pYlD464Iso
 // binary that would be applied, instead of hitting GitHub and replacing the
 // running executable. Never changed in production.
 var (
-	httpClient    = http.DefaultClient
+	httpClient    = newUpdateClient()
 	githubAPIBase = "https://api.github.com"
 	applyBinary   = func(r io.Reader) error { return up.Apply(r, up.Options{}) }
 )
+
+// newUpdateClient bounds the phases where a server that connects but then stalls
+// (sends no bytes) would otherwise hang until the caller cancels: dial, TLS
+// handshake and waiting for the response headers. It deliberately sets no
+// Client.Timeout — the response bodies are already size-capped (io.LimitReader),
+// and a whole-request deadline would abort a large-but-healthy binary download
+// over a slow link. Cloning DefaultTransport keeps HTTP/2 and proxy support.
+func newUpdateClient() *http.Client {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.DialContext = (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext
+	tr.TLSHandshakeTimeout = 10 * time.Second
+	tr.ResponseHeaderTimeout = 30 * time.Second
+	return &http.Client{Transport: tr}
+}
 
 // Result reports the outcome of a check/update.
 type Result struct {

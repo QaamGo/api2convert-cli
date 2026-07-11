@@ -108,6 +108,30 @@ func TestVerifyMinisignSignature(t *testing.T) {
 	}
 }
 
+// TestUpdateClientTimeouts guards the self-update client's shape: a server that
+// connects then stalls must be bounded by dial/TLS/response-header timeouts on
+// the Transport, while the body download stays uncapped (io.LimitReader already
+// bounds size; a whole-request Client.Timeout would abort a slow large download).
+func TestUpdateClientTimeouts(t *testing.T) {
+	c := newUpdateClient()
+	if c.Timeout != 0 {
+		t.Errorf("Client.Timeout = %v, want 0 (must not cap the body download)", c.Timeout)
+	}
+	tr, ok := c.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("Transport = %T, want *http.Transport", c.Transport)
+	}
+	if tr.DialContext == nil {
+		t.Error("DialContext must be set to bound connect")
+	}
+	if tr.TLSHandshakeTimeout <= 0 {
+		t.Error("TLSHandshakeTimeout must be bounded")
+	}
+	if tr.ResponseHeaderTimeout <= 0 {
+		t.Error("ResponseHeaderTimeout must be bounded so a stalled server can't hang")
+	}
+}
+
 func TestArchiveName(t *testing.T) {
 	ext := "tar.gz"
 	if runtime.GOOS == "windows" {
