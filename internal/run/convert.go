@@ -31,14 +31,52 @@ type Options struct {
 	OutputIndex       int
 	Timeout           time.Duration
 	OnConflict        string // error | skip | overwrite | rename
+
+	// CloudInput, when set, imports the source straight from customer cloud
+	// storage instead of a local file / URL positional. Mutually exclusive with a
+	// positional input at the CLI layer.
+	CloudInput *CloudSource
+	// OutputTargets, when non-empty, delivers the conversion output to customer
+	// cloud storage — the job then produces no local output file, so the local
+	// save path is skipped entirely.
+	OutputTargets []CloudTarget
 }
 
-// Result describes one completed (or skipped) conversion.
+// CloudSource is a cloud-storage input: a provider plus non-secret locator
+// Parameters (bucket, file, host, …) and secret Credentials (access keys,
+// passwords). Credentials are sourced from a file / env var, never a flag value.
+type CloudSource struct {
+	Provider    string
+	Parameters  map[string]any
+	Credentials map[string]any
+}
+
+// CloudTarget is a cloud-storage delivery target for the conversion output: a
+// provider plus delivery Parameters and secret Credentials. Credentials are
+// sourced from a file / env var, never a flag value.
+type CloudTarget struct {
+	Provider    string
+	Parameters  map[string]any
+	Credentials map[string]any
+}
+
+// Delivered records one cloud delivery target's outcome — provider and
+// server-set status only. Credentials are never carried here.
+type Delivered struct {
+	Provider string
+	Status   string
+}
+
+// Result describes one completed (or skipped) conversion. For a cloud-delivered
+// conversion Cloud is true, Path is empty (there is no local file) and Deliveries
+// lists each target's provider + status.
 type Result struct {
-	Input   string
-	Target  string
-	Path    string
-	Skipped bool
+	Input      string
+	Target     string
+	Path       string
+	Skipped    bool
+	Cloud      bool
+	Deliveries []Delivered
 }
 
 // ConvertOne converts a single input to target, writing to out (a file path, a
@@ -50,7 +88,23 @@ type Result struct {
 // re-runs (batch/watch) idempotent and quota-cheap. Path claiming uses
 // O_CREATE|O_EXCL, so concurrent batch workers can never collide on one path.
 func ConvertOne(ctx context.Context, c *api2convert.Client, input, target, out string, o Options, prog ui.Progress) (Result, error) {
+	// Cloud delivery: the output goes straight to customer storage, so the job
+	// produces no local file. Convert (never Save/download), then report the
+	// delivery targets and their status.
+	if len(o.OutputTargets) > 0 {
+		res, cerr := doConvert(ctx, c, input, target, out, o, prog)
+		if cerr != nil {
+			return Result{}, cerr
+		}
+		return cloudDeliveryResult(input, target, res), nil
+	}
+
 	planned, deterministic := plannedPath(input, out, target)
+	// A cloud input's output filename is server-assigned (like a URL input), so
+	// the local path can't be known before the conversion runs.
+	if o.CloudInput != nil {
+		deterministic = false
+	}
 
 	if deterministic {
 		final, skip, err := claimPath(planned, o.OnConflict)
@@ -104,19 +158,49 @@ func ConvertOne(ctx context.Context, c *api2convert.Client, input, target, out s
 
 func doConvert(ctx context.Context, c *api2convert.Client, input, target, out string, o Options, prog ui.Progress) (*api2convert.ConversionResult, error) {
 	copts := buildConvertOptions(o)
-	var in any = input
-	if input == "-" {
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return nil, err
-		}
-		in = data
-		copts = append(copts, api2convert.WithFilename(stdinName(out, target)))
+	in, err := prepareInput(&copts, input, out, target, o)
+	if err != nil {
+		return nil, err
 	}
 	prog.Start("Converting " + displayName(input) + " → " + target)
 	res, err := c.Convert(ctx, in, target, copts...)
 	prog.Stop()
 	return res, err
+}
+
+// prepareInput resolves the value handed to the SDK's Convert/ConvertAsync: a
+// typed CloudInput when importing from cloud storage, the stdin bytes for "-"
+// (advertising a filename), or the plain path/URL string otherwise.
+func prepareInput(copts *[]api2convert.ConvertOption, input, out, target string, o Options) (any, error) {
+	if o.CloudInput != nil {
+		return api2convert.CloudInputOf(
+			api2convert.CloudProvider(o.CloudInput.Provider),
+			o.CloudInput.Parameters,
+			o.CloudInput.Credentials,
+		), nil
+	}
+	if input == "-" {
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return nil, err
+		}
+		*copts = append(*copts, api2convert.WithFilename(stdinName(out, target)))
+		return data, nil
+	}
+	return input, nil
+}
+
+// cloudDeliveryResult builds a Result for a cloud-delivered conversion: no local
+// path, with each output target's provider + status. Credentials are never read
+// off the job (the SDK returns them empty on read) and never carried here.
+func cloudDeliveryResult(input, target string, res *api2convert.ConversionResult) Result {
+	r := Result{Input: input, Target: target, Cloud: true}
+	for _, conv := range res.Job.Conversion {
+		for _, t := range conv.OutputTargets {
+			r.Deliveries = append(r.Deliveries, Delivered{Provider: t.Type, Status: t.Status})
+		}
+	}
+	return r
 }
 
 // silentProgress is a disabled Progress used by batch/watch workers so their
@@ -130,14 +214,9 @@ func StartAsync(ctx context.Context, c *api2convert.Client, input, target, callb
 	if callback != "" {
 		copts = append(copts, api2convert.WithCallback(callback))
 	}
-	var in any = input
-	if input == "-" {
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return nil, err
-		}
-		in = data
-		copts = append(copts, api2convert.WithFilename(stdinName("", target)))
+	in, err := prepareInput(&copts, input, "", target, o)
+	if err != nil {
+		return nil, err
 	}
 	return c.ConvertAsync(ctx, in, target, copts...)
 }
@@ -158,6 +237,11 @@ func buildConvertOptions(o Options) []api2convert.ConvertOption {
 	}
 	if o.Timeout > 0 {
 		c = append(c, api2convert.WithConvertTimeout(o.Timeout))
+	}
+	for _, t := range o.OutputTargets {
+		c = append(c, api2convert.WithOutputTarget(
+			api2convert.OutputTargetOf(api2convert.CloudProvider(t.Provider), t.Parameters, t.Credentials),
+		))
 	}
 	return c
 }

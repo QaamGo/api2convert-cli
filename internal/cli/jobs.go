@@ -239,6 +239,15 @@ func (v jobDetailView) Human(w io.Writer) error {
 	for _, o := range j.Output {
 		fmt.Fprintf(w, "Output:  %s (%s)\n", o.Filename, sizeStr(o.Size))
 	}
+	// Cloud delivery targets: print provider + status only. Credentials are never
+	// printed — the SDK strips them on read, and we never emit t.Credentials here.
+	for _, t := range jobOutputTargets(j) {
+		status := t.Status
+		if status == "" {
+			status = "pending"
+		}
+		fmt.Fprintf(w, "Target:  %s (%s)\n", t.Type, status)
+	}
 	for _, e := range j.Errors {
 		fmt.Fprintf(w, "%s %s\n", ui.Cross(), e.Message)
 	}
@@ -254,12 +263,36 @@ func (v jobDetailView) JSON() any {
 	for _, o := range j.Output {
 		outs = append(outs, map[string]any{"id": o.ID, "filename": o.Filename, "uri": o.URI, "size": o.Size})
 	}
-	return map[string]any{
+	res := map[string]any{
 		"id":     j.ID,
 		"status": j.Status.Code,
 		"info":   j.Status.Info,
 		"output": outs,
 	}
+	if targets := jobOutputTargets(j); len(targets) > 0 {
+		// Cloud delivery targets: emit provider (type), parameters and status —
+		// but NEVER credentials, even if the SDK ever surfaced them.
+		ts := make([]map[string]any, 0, len(targets))
+		for _, t := range targets {
+			ts = append(ts, map[string]any{
+				"type":       t.Type,
+				"parameters": t.Parameters,
+				"status":     t.Status,
+			})
+		}
+		res["output_targets"] = ts
+	}
+	return res
+}
+
+// jobOutputTargets flattens the cloud delivery targets attached across a job's
+// conversions. Credentials are intentionally never read off these targets.
+func jobOutputTargets(j api2convert.Job) []api2convert.OutputTarget {
+	var out []api2convert.OutputTarget
+	for _, conv := range j.Conversion {
+		out = append(out, conv.OutputTargets...)
+	}
+	return out
 }
 
 func sizeStr(n *int64) string {
