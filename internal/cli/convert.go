@@ -37,6 +37,15 @@ type convertFlags struct {
 	failFast    bool
 	async       bool
 	callback    string
+
+	// cloud input
+	inputCloud     string
+	inputParams    []string
+	inputCredsFile string
+	// cloud output
+	outputTarget    string
+	outputParams    []string
+	outputCredsFile string
 }
 
 func newConvertCmd() *cobra.Command {
@@ -50,14 +59,41 @@ func newConvertCmd() *cobra.Command {
 		Example: "  api2convert convert report.docx --to pdf\n" +
 			"  api2convert convert report.docx -o report.pdf\n" +
 			"  api2convert convert https://example-files.online-convert.com/raster%20image/jpg/example_small.jpg --to pdf -o out/\n" +
-			"  api2convert convert *.png --to webp --option quality=80 --out-dir compressed/",
-		Args: cobra.MinimumNArgs(1),
+			"  api2convert convert *.png --to webp --option quality=80 --out-dir compressed/\n" +
+			"  api2convert convert --input-cloud amazons3 --input-param bucket=my-bucket --input-param file=in.docx --input-credentials-file s3.json --to pdf\n" +
+			"  api2convert convert report.docx --to pdf --output-target amazons3 --output-param bucket=out --output-credentials-file s3.json",
+		Args: func(cmd *cobra.Command, args []string) error {
+			// With --input-cloud the source comes from cloud storage, so there is
+			// no positional input; otherwise at least one input is required.
+			if cmd.Flags().Changed("input-cloud") {
+				if len(args) > 0 {
+					return errors.New("--input-cloud takes no positional input (the source is the cloud location)")
+				}
+				return nil
+			}
+			return cobra.MinimumNArgs(1)(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runConvert(cmd, args, f)
 		},
 	}
 	addConvertFlags(c, &f)
+	addCloudFlags(c, &f)
 	return c
+}
+
+// addCloudFlags registers the cloud input/output flags. They live only on the
+// top-level `convert` command (not batch/tasks). Credentials are sourced from a
+// file or an env var — deliberately never a flag whose value would sit in argv
+// (shell history / process list leak).
+func addCloudFlags(c *cobra.Command, f *convertFlags) {
+	fl := c.Flags()
+	fl.StringVar(&f.inputCloud, "input-cloud", "", "import the source from cloud storage: amazons3|azure|ftp|googlecloud")
+	fl.StringArrayVar(&f.inputParams, "input-param", nil, "cloud input locator key=value (repeatable; e.g. bucket=, file=, host=, container=, projectid=)")
+	fl.StringVar(&f.inputCredsFile, "input-credentials-file", "", "JSON file of cloud input credentials (or env A2C_INPUT_CREDENTIALS)")
+	fl.StringVar(&f.outputTarget, "output-target", "", "deliver the output to cloud storage: amazons3|azure|ftp|googlecloud|gdrive|youtube")
+	fl.StringArrayVar(&f.outputParams, "output-param", nil, "cloud output delivery key=value (repeatable)")
+	fl.StringVar(&f.outputCredsFile, "output-credentials-file", "", "JSON file of cloud output credentials (or env A2C_OUTPUT_CREDENTIALS)")
 }
 
 func addConvertFlags(c *cobra.Command, f *convertFlags) {
@@ -99,12 +135,41 @@ func runConvert(cmd *cobra.Command, args []string, f convertFlags) error {
 		target = inferTarget(f.out)
 	}
 
-	inputs, err := expandInputs(args, f.recursive)
+	cloudInput, err := buildCloudInput(f)
 	if err != nil {
 		return &clierr.UsageError{Err: err}
 	}
-	if len(inputs) == 0 {
-		return &clierr.UsageError{Err: errors.New("no inputs matched")}
+	outputTargets, err := buildOutputTargets(f)
+	if err != nil {
+		return &clierr.UsageError{Err: err}
+	}
+
+	ro := run.Options{
+		ConversionOptions: opts,
+		Category:          f.category,
+		Password:          f.password,
+		OutputIndex:       f.outputIndex,
+		Timeout:           f.timeout,
+		OnConflict:        onConflict,
+		CloudInput:        cloudInput,
+		OutputTargets:     outputTargets,
+	}
+	out := chooseOut(f.out, f.outDir)
+
+	var items []run.Item
+	if cloudInput != nil {
+		// A cloud input is a single synthetic item — there is no positional input
+		// and no local file to expand.
+		items = []run.Item{{Input: "cloud:" + cloudInput.Provider, Target: target}}
+	} else {
+		inputs, ierr := expandInputs(args, f.recursive)
+		if ierr != nil {
+			return &clierr.UsageError{Err: ierr}
+		}
+		if len(inputs) == 0 {
+			return &clierr.UsageError{Err: errors.New("no inputs matched")}
+		}
+		items = itemsForTarget(inputs, target, out)
 	}
 	if target == "" {
 		return &clierr.UsageError{Err: errors.New("specify --to <format> (or an --out with an extension); see 'api2convert formats'")}
@@ -115,18 +180,108 @@ func runConvert(cmd *cobra.Command, args []string, f convertFlags) error {
 		return err
 	}
 
-	ro := run.Options{
-		ConversionOptions: opts,
-		Category:          f.category,
-		Password:          f.password,
-		OutputIndex:       f.outputIndex,
-		Timeout:           f.timeout,
-		OnConflict:        onConflict,
-	}
-	out := chooseOut(f.out, f.outDir)
-
-	items := itemsForTarget(inputs, target, out)
 	return runOrAsync(cmd, cl, items, out, ro, f)
+}
+
+// inputCloudProviders are the four providers that offer an input downloader
+// (gdrive/youtube are output-only and rejected as an input).
+var inputCloudProviders = map[string]bool{"amazons3": true, "azure": true, "ftp": true, "googlecloud": true}
+
+// outputCloudProviders are the providers that accept a delivery target.
+var outputCloudProviders = map[string]bool{"amazons3": true, "azure": true, "ftp": true, "googlecloud": true, "gdrive": true, "youtube": true}
+
+// buildCloudInput assembles the cloud input spec from the --input-* flags, or
+// returns nil when --input-cloud is not set. Credentials come only from a file or
+// the A2C_INPUT_CREDENTIALS env var — never a flag value in argv.
+func buildCloudInput(f convertFlags) (*run.CloudSource, error) {
+	if f.inputCloud == "" {
+		return nil, nil
+	}
+	provider := strings.ToLower(f.inputCloud)
+	if !inputCloudProviders[provider] {
+		if provider == "gdrive" || provider == "youtube" {
+			return nil, fmt.Errorf("--input-cloud %s is not supported as an input (output-only); use one of amazons3|azure|ftp|googlecloud", provider)
+		}
+		return nil, fmt.Errorf("invalid --input-cloud %q (want amazons3|azure|ftp|googlecloud)", f.inputCloud)
+	}
+	params, err := parseCloudParams(f.inputParams, "--input-param")
+	if err != nil {
+		return nil, err
+	}
+	creds, err := loadCredentials(f.inputCredsFile, "A2C_INPUT_CREDENTIALS", "--input-credentials-file")
+	if err != nil {
+		return nil, err
+	}
+	return &run.CloudSource{Provider: provider, Parameters: params, Credentials: creds}, nil
+}
+
+// buildOutputTargets assembles the cloud delivery target from the --output-*
+// flags, or returns nil when --output-target is not set. Credentials come only
+// from a file or the A2C_OUTPUT_CREDENTIALS env var — never a flag value in argv.
+func buildOutputTargets(f convertFlags) ([]run.CloudTarget, error) {
+	if f.outputTarget == "" {
+		if len(f.outputParams) > 0 || f.outputCredsFile != "" {
+			return nil, errors.New("--output-param/--output-credentials-file require --output-target <provider>")
+		}
+		return nil, nil
+	}
+	provider := strings.ToLower(f.outputTarget)
+	if !outputCloudProviders[provider] {
+		return nil, fmt.Errorf("invalid --output-target %q (want amazons3|azure|ftp|googlecloud|gdrive|youtube)", f.outputTarget)
+	}
+	params, err := parseCloudParams(f.outputParams, "--output-param")
+	if err != nil {
+		return nil, err
+	}
+	creds, err := loadCredentials(f.outputCredsFile, "A2C_OUTPUT_CREDENTIALS", "--output-credentials-file")
+	if err != nil {
+		return nil, err
+	}
+	return []run.CloudTarget{{Provider: provider, Parameters: params, Credentials: creds}}, nil
+}
+
+// parseCloudParams turns repeated key=value flags into a parameters map. Values
+// stay verbatim strings (cloud locator keys like bucket/file/host are strings; no
+// bool/number coercion that could mangle a numeric-looking bucket name).
+func parseCloudParams(kvs []string, flag string) (map[string]any, error) {
+	m := map[string]any{}
+	for _, kv := range kvs {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok || k == "" {
+			return nil, fmt.Errorf("%s must be key=value, got %q", flag, kv)
+		}
+		m[k] = v
+	}
+	return m, nil
+}
+
+// loadCredentials reads a JSON object of credentials from a file (preferred) or an
+// env var. Credentials are never accepted as an inline flag value, which would
+// leak them into shell history and the process list. Returns nil when neither
+// source is set (an empty credentials object is sent).
+func loadCredentials(file, envVar, flag string) (map[string]any, error) {
+	var raw []byte
+	switch {
+	case file != "":
+		b, err := os.ReadFile(file)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", flag, err)
+		}
+		raw = b
+	case os.Getenv(envVar) != "":
+		raw = []byte(os.Getenv(envVar))
+	default:
+		return nil, nil
+	}
+	creds := map[string]any{}
+	if err := json.Unmarshal(raw, &creds); err != nil {
+		src := flag
+		if file == "" {
+			src = "env " + envVar
+		}
+		return nil, fmt.Errorf("invalid credentials JSON (%s): %w", src, err)
+	}
+	return creds, nil
 }
 
 // runOrAsync dispatches items to the async starter or the synchronous
@@ -197,6 +352,17 @@ func emitConvert(cmd *cobra.Command, res run.Result) error {
 	if gf.json {
 		return output.Emit(cmd.OutOrStdout(), true, convertView{res})
 	}
+	if res.Cloud {
+		if gf.quiet {
+			fmt.Fprintln(cmd.OutOrStdout(), cloudDeliverySummary(res))
+			return nil
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), ui.Success("delivered to cloud storage"))
+		for _, d := range res.Deliveries {
+			fmt.Fprintln(cmd.OutOrStdout(), ui.Dim("  → "+d.Provider+" ("+deliveryStatus(d.Status)+")"))
+		}
+		return nil
+	}
 	if gf.quiet {
 		fmt.Fprintln(cmd.OutOrStdout(), res.Path)
 		return nil
@@ -209,14 +375,55 @@ func emitConvert(cmd *cobra.Command, res run.Result) error {
 	return nil
 }
 
+func deliveryStatus(s string) string {
+	if s == "" {
+		return "pending"
+	}
+	return s
+}
+
+// cloudDeliverySummary is the terse one-line form for --quiet cloud output.
+func cloudDeliverySummary(res run.Result) string {
+	parts := make([]string, 0, len(res.Deliveries))
+	for _, d := range res.Deliveries {
+		parts = append(parts, d.Provider+"="+deliveryStatus(d.Status))
+	}
+	if len(parts) == 0 {
+		return "cloud"
+	}
+	return strings.Join(parts, ",")
+}
+
 type convertView struct{ r run.Result }
 
 func (v convertView) Human(w io.Writer) error {
+	if v.r.Cloud {
+		fmt.Fprintln(w, ui.Success("delivered to cloud storage"))
+		for _, d := range v.r.Deliveries {
+			fmt.Fprintln(w, ui.Dim("  → "+d.Provider+" ("+deliveryStatus(d.Status)+")"))
+		}
+		return nil
+	}
 	fmt.Fprintln(w, ui.Success(v.r.Path))
 	return nil
 }
 
 func (v convertView) JSON() any {
+	if v.r.Cloud {
+		// Cloud delivery: no local output path; report each target's provider +
+		// status. Credentials are never carried on the result and never emitted.
+		targets := make([]map[string]any, 0, len(v.r.Deliveries))
+		for _, d := range v.r.Deliveries {
+			targets = append(targets, map[string]any{"provider": d.Provider, "status": d.Status})
+		}
+		return map[string]any{
+			"ok":             true,
+			"input":          v.r.Input,
+			"target":         v.r.Target,
+			"cloud":          true,
+			"output_targets": targets,
+		}
+	}
 	return map[string]any{
 		"ok":          true,
 		"input":       v.r.Input,
