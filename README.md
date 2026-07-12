@@ -97,6 +97,16 @@ api2convert convert movie.mov --to mp4 --async        # prints a job id
 api2convert jobs wait <job-id>
 api2convert convert report.docx --to pdf --json --quiet
 api2convert credits
+
+# Cloud storage — read the input straight from a bucket, or deliver the output to one.
+# Credentials come from a JSON file or env (A2C_INPUT_CREDENTIALS / A2C_OUTPUT_CREDENTIALS),
+# never from the command line.
+api2convert convert --to pdf -o march.pdf \
+  --input-cloud amazons3 --input-param bucket=my-bucket --input-param file=invoices/march.docx \
+  --input-credentials-file s3.json
+api2convert convert march.docx --to pdf \
+  --output-target amazons3 --output-param bucket=my-bucket --output-param file=out/march.pdf \
+  --output-credentials-file s3.json        # delivered to S3 — no local file
 ```
 
 ## Configuration
