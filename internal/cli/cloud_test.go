@@ -81,10 +81,18 @@ func TestBuildOutputTargetsMapping(t *testing.T) {
 	}
 
 	// gdrive/youtube ARE valid output targets.
-	for _, p := range []string{"gdrive", "youtube", "azure", "ftp", "googlecloud"} {
+	for _, p := range []string{"gdrive", "youtube", "azure", "googlecloud"} {
 		if _, err := buildOutputTargets(convertFlags{outputTarget: p}); err != nil {
 			t.Fatalf("%s should be a valid output target: %v", p, err)
 		}
+	}
+	// ftp is retired: the API rejects it, so the CLI must refuse it up front rather than
+	// sending a request that can only fail server-side.
+	if _, err := buildOutputTargets(convertFlags{outputTarget: "ftp"}); err == nil {
+		t.Fatal("ftp is retired and must be rejected as an output target")
+	}
+	if _, err := buildCloudInput(convertFlags{inputCloud: "ftp"}); err == nil {
+		t.Fatal("ftp is retired and must be rejected as a cloud input")
 	}
 	// params without a target is a usage error.
 	if _, err := buildOutputTargets(convertFlags{outputParams: []string{"bucket=x"}}); err == nil {

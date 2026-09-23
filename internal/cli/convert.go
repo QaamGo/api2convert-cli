@@ -88,10 +88,10 @@ func newConvertCmd() *cobra.Command {
 // (shell history / process list leak).
 func addCloudFlags(c *cobra.Command, f *convertFlags) {
 	fl := c.Flags()
-	fl.StringVar(&f.inputCloud, "input-cloud", "", "import the source from cloud storage: amazons3|azure|ftp|googlecloud")
+	fl.StringVar(&f.inputCloud, "input-cloud", "", "import the source from cloud storage: amazons3|azure|googlecloud")
 	fl.StringArrayVar(&f.inputParams, "input-param", nil, "cloud input locator key=value (repeatable; e.g. bucket=, file=, host=, container=, projectid=)")
 	fl.StringVar(&f.inputCredsFile, "input-credentials-file", "", "JSON file of cloud input credentials (or env A2C_INPUT_CREDENTIALS)")
-	fl.StringVar(&f.outputTarget, "output-target", "", "deliver the output to cloud storage: amazons3|azure|ftp|googlecloud|gdrive|youtube")
+	fl.StringVar(&f.outputTarget, "output-target", "", "deliver the output to cloud storage: amazons3|azure|googlecloud|gdrive|youtube")
 	fl.StringArrayVar(&f.outputParams, "output-param", nil, "cloud output delivery key=value (repeatable)")
 	fl.StringVar(&f.outputCredsFile, "output-credentials-file", "", "JSON file of cloud output credentials (or env A2C_OUTPUT_CREDENTIALS)")
 }
@@ -185,10 +185,10 @@ func runConvert(cmd *cobra.Command, args []string, f convertFlags) error {
 
 // inputCloudProviders are the four providers that offer an input downloader
 // (gdrive/youtube are output-only and rejected as an input).
-var inputCloudProviders = map[string]bool{"amazons3": true, "azure": true, "ftp": true, "googlecloud": true}
+var inputCloudProviders = map[string]bool{"amazons3": true, "azure": true, "googlecloud": true}
 
 // outputCloudProviders are the providers that accept a delivery target.
-var outputCloudProviders = map[string]bool{"amazons3": true, "azure": true, "ftp": true, "googlecloud": true, "gdrive": true, "youtube": true}
+var outputCloudProviders = map[string]bool{"amazons3": true, "azure": true, "googlecloud": true, "gdrive": true, "youtube": true}
 
 // buildCloudInput assembles the cloud input spec from the --input-* flags, or
 // returns nil when --input-cloud is not set. Credentials come only from a file or
@@ -200,9 +200,9 @@ func buildCloudInput(f convertFlags) (*run.CloudSource, error) {
 	provider := strings.ToLower(f.inputCloud)
 	if !inputCloudProviders[provider] {
 		if provider == "gdrive" || provider == "youtube" {
-			return nil, fmt.Errorf("--input-cloud %s is not supported as an input (output-only); use one of amazons3|azure|ftp|googlecloud", provider)
+			return nil, fmt.Errorf("--input-cloud %s is not supported as an input (output-only); use one of amazons3|azure|googlecloud", provider)
 		}
-		return nil, fmt.Errorf("invalid --input-cloud %q (want amazons3|azure|ftp|googlecloud)", f.inputCloud)
+		return nil, fmt.Errorf("invalid --input-cloud %q (want amazons3|azure|googlecloud)", f.inputCloud)
 	}
 	params, err := parseCloudParams(f.inputParams, "--input-param")
 	if err != nil {
@@ -227,7 +227,7 @@ func buildOutputTargets(f convertFlags) ([]run.CloudTarget, error) {
 	}
 	provider := strings.ToLower(f.outputTarget)
 	if !outputCloudProviders[provider] {
-		return nil, fmt.Errorf("invalid --output-target %q (want amazons3|azure|ftp|googlecloud|gdrive|youtube)", f.outputTarget)
+		return nil, fmt.Errorf("invalid --output-target %q (want amazons3|azure|googlecloud|gdrive|youtube)", f.outputTarget)
 	}
 	params, err := parseCloudParams(f.outputParams, "--output-param")
 	if err != nil {
