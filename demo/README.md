@@ -20,7 +20,7 @@ with **no API key and no quota used**.
 
 ```sh
 # 1. Build a linux/amd64 binary
-docker run --rm -v "$PWD":/src -w /src golang:1.25 go build -o /src/api2convert .
+docker run --rm -v "$PWD":/src -w /src golang:1.26 go build -o /src/api2convert .
 
 # 2. Record the GIF
 API2CONVERT_BIN="$PWD/api2convert" demo/generate.sh

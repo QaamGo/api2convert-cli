@@ -8,7 +8,7 @@
 #   API2CONVERT_BIN=/path/to/linux-amd64/api2convert demo/generate.sh
 #
 # Build a suitable binary (linux/amd64) with:
-#   docker run --rm -v "$PWD":/src -w /src golang:1.25 go build -o /src/api2convert .
+#   docker run --rm -v "$PWD":/src -w /src golang:1.26 go build -o /src/api2convert .
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"

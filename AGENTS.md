@@ -19,7 +19,7 @@ binary, wraps the `github.com/QaamGo/api2convert-go/v10` SDK.
 
 ## Build & test
 
-The toolchain is **Go 1.25+** (a current dependency requires it). `go.mod` pins
+The toolchain is **Go 1.26+** (a current dependency requires it). `go.mod` pins
 the **published** SDK (`github.com/QaamGo/api2convert-go/v10`), so a plain build
 just works:
 
@@ -32,7 +32,7 @@ For co-development against a local SDK checkout, use a **gitignored `go.work`**
 
 ```
 // go.work  (gitignored)
-go 1.25.0
+go 1.26.0
 use (
 	.
 	../api2convert-go
@@ -45,7 +45,7 @@ resolve the published SDK):
 
 ```sh
 docker run --rm --network host -v "$PWD":/work -w /work \
-  -e GOWORK=off -e GOFLAGS=-buildvcs=false golang:1.25 \
+  -e GOWORK=off -e GOFLAGS=-buildvcs=false golang:1.26 \
   sh -c 'go build ./... && go vet ./... && go test ./...'
 ```
 
