@@ -4,6 +4,10 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  # Weekly, so a new advisory turns the audit red without a push. GitHub switches scheduled runs off
+  # after 60 days without a commit in a public repository.
+  schedule:
+    - cron: '3 5 * * 1'
   workflow_dispatch: # allow running the suite (incl. the live job) on demand
 
 permissions:
@@ -92,7 +96,7 @@ jobs:
     # Live tests hit the real API and consume quota; run on the default branch and
     # on manual dispatch (not on PRs). REQUIRED: the step below fails the build if
     # the API2CONVERT_API_KEY secret is missing, so the suite can never silently skip.
-    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name != 'schedule' && (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     env:
       API2CONVERT_API_KEY: ${{ secrets.API2CONVERT_API_KEY }}
