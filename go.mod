@@ -10,8 +10,8 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/minio/selfupdate v0.6.0
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/mod v0.42.0
-	golang.org/x/term v0.47.0
+	golang.org/x/mod v0.43.0
+	golang.org/x/term v0.48.0
 )
 
 require (
@@ -42,6 +42,6 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 )
